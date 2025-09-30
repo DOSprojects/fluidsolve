@@ -18,14 +18,12 @@ Use Cases
 * visualisation of pump and circuit curves and working point
 * orifice dimensioning
 
-.. figure:: https://github.com/DOSprojects/fluidsolve/tree/main/doc/source/_images
-    :alt:
+.. figure:: https://github.com/DOSprojects/fluidsolve/raw/main/doc/source/_images/basic.png
     :width: 45%
 
     Calculations
 
-.. figure:: https://github.com/DOSprojects/fluidsolve/tree/main/doc/source/_images
-    :alt:
+.. figure:: https://github.com/DOSprojects/fluidsolve/raw/main/doc/source/_images/plotserial.png
     :width: 45%
 
     Interactive Plot
