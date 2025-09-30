@@ -1,0 +1,81 @@
+# pyproject.toml
+[build-system]
+requires      = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FluidSolve"
+version = "0.7.0"
+description = "Fluid Dynamics Calculations"
+authors = [{ name = "DOSprojects", email = "mail@domain.com" }]
+license = { file = "LICENSE" }
+readme = "README.rst"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+keywords = [
+    "python",
+    "fluid dynamics",
+    "engineering",
+    "physics",
+    "pint",
+    "fluids",
+    "calculation",
+    "process engineering",
+    "mechanical engineering"
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    'numpy',
+    'matplotlib',
+    'mpl_interactions',
+    'fluids',
+    'pint',
+    'thermo',
+    'scipy',
+]
+
+[project.optional-dependencies]
+dev = [
+    "pylint",
+    "build",
+    "twine",
+]
+doc = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-gallery",
+    "sphinx-toolbox",
+    "docutils==0.20"
+]
+test = [
+    "pytest",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["examples","tests", "tools"]
+
+[tool.setuptools.package-data]
+"fluidsolve" = ["_matplotlib.ico", "comp_cat/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+
+[project.urls]
+homepage = "https://github.com/DOSprojects/fluidsolve.git"
+documentation = "https://fluidsolve.readthedocs.io/en/latest/index.html"
+repository = "https://github.com/DOSprojects/fluidsolve.git"
+changelog = "https://github.com/DOSprojects/fluidsolve/blob/main/CHANGELOG.rst"

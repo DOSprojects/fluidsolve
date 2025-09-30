@@ -1,0 +1,11 @@
+include *.py
+include README.rst
+include CHANGELOG.rst
+include LICENSE
+include src/fluidsolve/_matplotlib.ico
+include src/fluidsolve/comp_cat/*.json
+
+# Exclude Files
+global-exclude *.pyc
+global-exclude .git
+global-exclude .vscode

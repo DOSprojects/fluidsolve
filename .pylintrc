@@ -1,0 +1,140 @@
+[MASTER]
+ignore=c_units.py
+ignore-patterns=
+# Pickle collected data for later comparisons.
+persistent=no
+# List of plugins (as comma separated values of python modules names) to load, usually to register additional checkers.
+load-plugins=
+# Use multiple processes to speed up Pylint.
+jobs=4
+
+[MESSAGES CONTROL]
+# Only show warnings with the listed confidence levels. Leave empty to show all. Valid levels: HIGH, INFERENCE, INFERENCE_FAILURE, UNDEFINED
+confidence=
+#enable=
+disable=W0401, W0102, W0122, W0123, W0603, W0611, W0614, C0123, R0903, R1705, R1720, dangerous-default-value
+
+[REPORTS]
+# Set the output format
+output-format=text
+# Display a full report or only the messages
+reports=no
+# Python expression used by the global evaluation report (RP0004) which should return a note less than 10 (10 is the highest note).
+evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
+# Template used to display messages.
+#msg-template=
+
+[BASIC]
+# Good variable names which should always be accepted, separated by a comma
+good-names=i, main,_
+# Colon-delimited sets of names that determine each other's naming style when the name regexes allow several styles.
+name-group=
+# Include a hint for the correct naming format with invalid-name
+include-naming-hint=no
+# Minimum line length for functions/classes that require docstrings, shorter ones are exempt.
+docstring-min-length=5
+# Naming stypes
+class-naming-style=PascalCase
+function-naming-style=camelCase
+method-naming-style=camelCase
+
+[TYPECHECK]
+# List of decorators that produce context managers, such as contextlib.contextmanager.
+contextmanager-decorators=contextlib.contextmanager,contextlib2.contextmanager
+# List of module names for which member attributes should not be checked (upports qualified module names and Unix pattern matching).
+ignored-modules=
+# List of class names for which member attributes should not be checked.
+ignored-classes=optparse.Values,thread._local,_thread._local
+# List of members which are set dynamically and missed by pylint inference system (Python regular expressions are accepted).
+generated-members=
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=240
+# Maximum number of lines in a module
+max-module-lines=99999
+# String used as indentation unit.
+indent-string='  '
+# Number of spaces of indent required inside a hanging  or continued line.
+indent-after-paren=2
+# Expected format of line ending, e.g. empty (any line ending), LF or CRLF.
+expected-line-ending-format=
+
+# Allow both camelCase and snake_case
+variable-rgx=[a-zA-Z_][a-zA-Z0-9_]*$
+function-rgx=([a-zA-Z_][a-zA-Z0-9]*|__.*__)$
+method-rgx=([a-zA-Z_][a-zA-Z0-9]*|__.*__)$
+attr-rgx=[a-zA-Z_][a-zA-Z0-9]*$
+argument-rgx=[a-zA-Z_][a-zA-Z0-9_]*$
+class-rgx=[A-Z_][a-zA-Z0-9]*$
+const-rgx=([A-Z_][A-Z0-9_]*)|([a-zA-Z_][a-zA-Z0-9]*$)
+
+
+[MISCELLANEOUS]
+# List of note tags to take in consideration, separated by a comma.
+notes=TODO
+
+[STRING]
+# This flag controls whether inconsistent-quotes generates a warning when the character used as a quote delimiter is used inconsistently within a module.
+check-quote-consistency=yes
+
+[VARIABLES]
+# Tells whether we should check for unused import in __init__ files.
+init-import=no
+# List of additional names supposed to be defined in builtins. Remember that you should avoid to define new builtins when possible.
+additional-builtins=
+
+[LOGGING]
+# Logging modules to check that the string format arguments are in logging
+# function parameter format
+logging-modules=logging,absl.logging,tensorflow.io.logging
+
+[SIMILARITIES]
+# Minimum lines number of a similarity.
+min-similarity-lines=4
+# Ignore comments when computing similarities.
+ignore-comments=yes
+# Ignore docstrings when computing similarities.
+ignore-docstrings=yes
+# Ignore imports when computing similarities.
+ignore-imports=no
+
+[SPELLING]
+# Spelling dictionary name. Available dictionaries: none. To make it working install python-enchant package.
+spelling-dict=
+# List of comma separated words that should not be checked.
+spelling-ignore-words=
+# A path to a file that contains private dictionary; one word per line.
+spelling-private-dict-file=
+# Tells whether to store unknown words to indicated private dictionary in --spelling-private-dict-file option instead of raising a message.
+spelling-store-unknown-words=no
+
+[IMPORTS]
+# Deprecated modules which should not be used, separated by a comma
+deprecated-modules=regsub, TERMIOS, Bastion, rexec, sets
+# Create a graph of every (i.e. internal and external) dependencies in the given file (report RP0402 must not be disabled)
+import-graph=
+# Create a graph of external dependencies in the given file (report RP0402 must not be disabled)
+ext-import-graph=
+# Create a graph of internal dependencies in the given file (report RP0402 must not be disabled)
+int-import-graph=
+# Force import order to recognize a module as part of the standard compatibility libraries.
+known-standard-library=
+# Force import order to recognize a module as part of a third party library.
+known-third-party=enchant, absl
+# Analyse import fallback blocks.
+analyse-fallback-blocks=no
+
+[CLASSES]
+# List of method names used to declare (i.e. assign) instance attributes.
+defining-attr-methods=__init__, __new__, setUp
+# List of member names, which should be excluded from the protected access warning.
+exclude-protected=_asdict, _fields, _replace, _source, _make
+# List of valid names for the first argument in a class method.
+valid-classmethod-first-arg=cls, class_
+# List of valid names for the first argument in a metaclass class method.
+valid-metaclass-classmethod-first-arg=mcs
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught. Defaults to "Exception"
+overgeneral-exceptions=StandardError, Exception, BaseException

@@ -1,0 +1,10 @@
+#python >3.10
+setuptools
+sphinx-rtd-theme
+sphinx-gallery
+sphinx-toolbox
+pylint
+docutils==0.20
+pytest
+build
+twine

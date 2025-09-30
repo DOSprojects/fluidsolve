@@ -1,0 +1,8 @@
+#python >3.10
+numpy
+scipy
+matplotlib
+mpl_interactions
+fluids
+pint
+thermo

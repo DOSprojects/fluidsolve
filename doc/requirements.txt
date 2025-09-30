@@ -1,0 +1,10 @@
+sphinx
+sphinx_rtd_theme
+myst-parser
+numpy
+scipy
+matplotlib
+mpl_interactions
+fluids
+pint
+thermo
