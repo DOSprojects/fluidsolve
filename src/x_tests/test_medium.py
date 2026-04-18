@@ -1,10 +1,9 @@
 #pytest test_medium.py
 
 import pytest
-from pint import UnitRegistry
-from fluidsolve.medium import Medium  # Adjust the import path if needed
+from fluidsolve.medium import Medium, unitRegistry
 
-u = UnitRegistry()
+u = unitRegistry
 
 def test_medium_default():
     m = Medium()
@@ -16,13 +15,13 @@ def test_medium_default():
     assert m.k.magnitude > 0
 
 def test_medium_custom_conditions():
-    m = Medium(T=50 * u.degC, p=2 * u.bar)
+    m = Medium(T=u.Quantity(50, u.degC), p=2 * u.bar)
     assert m.T.magnitude == pytest.approx(50.0, rel=1e-2)
     assert m.p.magnitude == pytest.approx(2.0, rel=1e-2)
 
 def test_medium_property_setters():
     m = Medium()
-    m.T = 60 * u.degC
+    m.T = u.Quantity(60, u.degC)
     m.p = 3 * u.bar
     m.rho = 950 * u.kg/u.m**3
     m.mu = 0.001 * u.Pa*u.s

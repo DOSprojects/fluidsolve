@@ -65,8 +65,8 @@ html_theme_options = {
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
-source_suffix = '.rst'
-master_doc = 'index'
+source_suffix = {'.rst': 'restructuredtext'}
+root_doc = 'index'
 
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
@@ -107,3 +107,22 @@ autodoc_default_options = {
     'private-members':   True,
     'special-members':   '__init__, __str__, __repr__'
 }
+
+# Existing Google-style docstrings contain legacy pseudo-types such as
+# "optional" which napoleon can emit as unresolved class refs
+# under nitpicky builds (-n -W). Ignore these globally until docstrings are
+# normalized.
+nitpick_ignore = [
+  ('py:class', 'optional'),
+  ('py:class', 'Material'),
+  ('py:class', 'flsb.Comp_Base'),
+  ('py:class', 'flsme.Medium'),
+  ('py:class', 'flsma.Material'),
+  ('py:class', 'flswp.Wpoint'),
+  ('py:class', 'flspath.Path'),
+  ('py:class', 'flsnet.Network'),
+  ('py:class', 'fluidsolve.material.Material'),
+  ('py:class', 'Quantity'),
+  ('py:class', 'pint.registry.Quantity'),
+  ('py:class', 'np.ndarray'),
+]

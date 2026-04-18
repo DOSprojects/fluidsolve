@@ -25,32 +25,31 @@ Following methods are used. We presume following network:
     |        |        |
     A ────── F ────── E
 
-* **Nodes**: returns a list with all the nodes in the network
-  net.Nodes = ['A', 'B', 'C', 'D', 'E', 'F']
-* **Edges**: returns a list with all the edges in the network. Each edge must contain a Component (Pump, Resistance, Dummy, ...).
-  net.Edges = [('A', 'B'), ('B', 'C'), ('C', 'D'), ('D', 'E'), ('F', 'E'), ('F', 'A')]
-* **Adjacency**: returns the adjacency dict of the network
-  net.Adjacency = {'A': ['B', 'F'], 'B': ['A', 'C'], 'C': ['B', 'D'], 'D': ['C', 'E'], 'E': ['D', 'F'], 'F': ['E', 'A']}
-* **SpanningTree**: returns a list with all the nodes in the network
-  net.SpanningTree = [('A', 'F'), ('E', 'F'), ('D', 'E'), ('C', 'D'), ('B', 'C')]
-* **FundamentalCycles**: returns a list with all the nodes in the network
-  net.FundamentalCycles = [['A', 'F', 'E', 'D', 'C', 'B', 'A']]
-* **findShortestPath**: Algorithm for an unweighted undirected graph using Breadth-First Search (BFS) to find the shortest path between two nodes of a graph.
-  net.findShortestPath('B', 'E') = ['B', 'A', 'F', 'E']
+* **Nodes**: returns all node names (sorted).
+  ``net.Nodes = ('A', 'B', 'C', 'D', 'E', 'F')``
+* **Edges**: returns segment keys (one key per component port-to-port segment).
+  ``net.Edges = ['Comp_1:A->B', 'Comp_2:B->C', ...]``
+* **Adjacency**: returns adjacency entries as ``(segment_key, next_node, sense)``.
+  ``net.Adjacency['A'] = [('Comp_1:A->B', 'B', 1), ('Comp_6:F->A', 'F', -1)]``
+* **SpanningTree**: returns tree entries as ``(segment_key, node_from, node_to, sense)``.
+  ``net.SpanningTree = [('Comp_1:A->B', 'A', 'B', 1), ...]``
+* **FundamentalCycles**: returns cycle entries as ``(segment_key, node_from, node_to, sense)``.
+  ``net.FundamentalCycles = [[('Comp_1:A->B', 'A', 'B', 1), ...], ...]``
 
 
 The calculation of the network is done by solving a system of equations.
 This system consists of:
 
-* In every node the sum of flowrates has to be zero. In our case this generates 6 equations.
+* In every node the sum of flowrates has to be zero.
+  For ``n`` nodes this contributes ``n-1`` independent equations.
   The data for the equations in the example looks like below.
   The order of the rows is the order of the internal nodes storage ['A', 'B', 'C', 'D', 'E', 'F'].
-  Every row has a position for every edge in the order of the internal edge storage [('A', 'B'), ('B', 'C'), ('C', 'D'), ('D', 'E'), ('F', 'E'), ('C', 'F'), ('F', 'A')].
+  Every row has a position for every segment key in the internal segment storage.
   E.g. for the first line (node A):
-  * The component in edge [A-B] has an internal forward use and is used forward, so gives 1 * 1 = 1.
-  * The component in edge [B-C] has no connection wit node A, so gives 0.
+  * The segment connected to A and leaving A contributes ``-1``.
+  * Segments not connected to A contribute ``0``.
   * ...
-  * The component in edge [F-A] has no connection wit node A, has an internal forward use and is used backwards, so gives 1 * -1 = 1.
+  * The segment connected to A and entering A contributes ``+1``.
 
 ::
 
@@ -63,34 +62,19 @@ This system consists of:
 
 
 * In every fundamental cycle the sum of heads has to be zero.
-  In the example we determined 2 fundamental cycles: ['A', 'F', 'C', 'B', 'A'] and ['E', 'D', 'C', 'F', 'E']
-  resulting in 2 additional equations.
-  Every equation consists of an entry for every edge.
-  If the edge is not included, the the component is Comp_Dummy, d(irection) = 0 and s is between brackets.
-  If the edge is in anther direction than the defined use, d=-1, else d=+1.
+  If there are ``m`` fundamental cycles, this contributes ``m`` additional equations.
+  Every cycle equation has one entry per segment key:
+  ``+1`` if the segment is traversed in the cycle direction,
+  ``-1`` if traversed opposite,
+  and ``0`` if the segment is not part of that cycle.
 
 ::
 
-  Equation 7:
-  {'s': 'B-A', 'c': <fluidsolve.comp_pump.Comp_PumpCentrifugal object at 0x000002BFB0656360>, 'd': -1.0}
-  {'s': 'C-B', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFA7E6F560>, 'd': -1.0}
-  {'s': '(C-D)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC04F66F0>, 'd': 0.0}
-  {'s': '(D-E)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC04F6F90>, 'd': 0.0}
-  {'s': '(F-E)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC04F7680>, 'd': 0.0}
-  {'s': 'F-C', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFC04F5340>, 'd': -1.0}
-  {'s': 'A-F', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFC04F5A90>, 'd': -1.0}
+  C row i: [0, -1, +1, 0, 0, ...]
 
-  Equation 8:
-  {'s': '(A-B)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC04F6630>, 'd': 0.0}
-  {'s': '(B-C)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC04F6B10>, 'd': 0.0}
-  {'s': 'D-C', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFC00790D0>, 'd': -1.0}
-  {'s': 'E-D', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFBFD72270>, 'd': -1.0}
-  {'s': 'F-E', 'c': <fluidsolve.comp_pump.Comp_PumpCentrifugal object at 0x000002BFC04F5AC0>, 'd': 1.0}
-  {'s': 'C-F', 'c': <fluidsolve.comp_resist.Comp_Tube object at 0x000002BFC04F5340>, 'd': 1.0}
-  {'s': '(F-A)', 'c': <fluidsolve.comp_resist.Comp_Dummy object at 0x000002BFC058D940>, 'd': 0.0}
-
-To solve the system of equations, the Newton-Raphson method is used.
-The input above is used to do the actual calculations in the solver function.
+The solver builds matrix ``B`` (node continuity) and matrix ``C`` (loop energy),
+evaluates component heads through ``calcH(Q, sense)``, and solves the resulting
+nonlinear system with Newton-Raphson.
 
 
 

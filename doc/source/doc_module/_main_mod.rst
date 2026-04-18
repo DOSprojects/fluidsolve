@@ -6,11 +6,14 @@ Module
    :caption: Contents:
 
    medium
+   material
    core
    comp_base
    comp_pump
    comp_resist
+   comp_valve
    wpoint
+   path
    network
    catalogue
    util

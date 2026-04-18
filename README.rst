@@ -44,12 +44,14 @@ Usage
 This module contains a number of functionalities:
 
 * Medium definition.
+* Material definition.
 * Component definition.
 * Pump definition.
-* Circuit definition (consisting of one ore more components).
+* Path definition (consisting of one ore more components).
+* Network definition (consisting of a network of connected components).
 * Pump and component selection (from catalogue)
 * Plotting (static or interactive) Q-H graphs.
-* Orifice dimensioning.
+* Orifice dimensioning and other utility tools.
 
 Take a look at the included examples for more info.
 
@@ -138,12 +140,14 @@ The complete procedure becomes (for details see above):
     * Open the Command Palette (Ctrl+Shift+P), search for **Python: Create Environment**
     * Select venv
     * Enter the python interpreter
+    * if in dev mode: select optional dependencies (check them all - also doc and test); also see the development section.
     * After selecting the Python interpreter version, a notification will show the progress of the environment creation.
     * The environment folder (.venv) will appear in your workspace.
     * Open the Command Palette (Ctrl+Shift+P), search for **Python: Select Interpreter**
     * select the python interpreter from the venv
 * To test the interpreter: open a terminal and type: *python --version*
 * Install library (fluidsolve is just a Python package)
+    * If you want to install it in dev mode: see that section
     * in the terminal:
 
     .. code-block:: console
@@ -170,6 +174,8 @@ Take a look at the example scripts.
 
 Eventually activate the virtual environment: `d:\fluidsolve\_venv\fluidsolve\Scripts\activate`
 You can check if it is activated with: `pip list`
+
+Data from printed pump characteristics can easily be extracted by using a tool such as webwplot digitizer: `https://apps.automeris.io/wpd4/ <https://apps.automeris.io/wpd4/>`__
 
 References
 ==========

@@ -3,8 +3,9 @@
   FluidSolve module
   Fluid Dynamics Calculations
 '''
+from typing import Any
 
-def main ():
+def main () -> Any:
   pass
 
 if __name__ == '__main__':

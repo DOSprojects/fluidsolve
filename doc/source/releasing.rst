@@ -46,16 +46,16 @@ From this document one can find following workflow below.
         ├── LICENSE
         ├── MANIFEST.in
         ├── pyproject.toml
-        ├── requirements-dev.rst
-        ├── requirements.rst
+        ├── requirements-dev.txt
+        ├── requirements.txt
         └── usage.rst
 
 Pre-release
 ^^^^^^^^^^^
 
-* Fill in a new version number (e.g. ``X.Y.Z``) in `src/fluidsolve/___version.py`
-* Update `CHANGELOG.rst`__ with that number
-* Update `pyproject.toml>`__ with that number
+* Fill in a new version number (e.g. ``X.Y.Z``) in ``src/fluidsolve/___version.py``
+* Update `CHANGELOG.rst <../../CHANGELOG.rst>`_ with that number
+* Update `pyproject.toml <../../pyproject.toml>`_ with that number
 
 Make Package
 ^^^^^^^^^^^^
@@ -85,9 +85,9 @@ Check Package
       .. code-block:: console
 
          d:
-         cd \fluidsolve\_venv
+         cd \fluidsolve\.venv
          python -m venv test_env  (answer yes on the vscode prompt) 
-         d:\fluidsolve\_venv\test_env\Scripts\activate
+         d:\fluidsolve\.venv\test_env\Scripts\activate
 
 * Install the Package Locally
 
@@ -103,6 +103,7 @@ Check Package
          import fluidsolve as fls
          u = fls.unitRegistry
          Quantity = fls.Quantity
+         Q = Quantity(1, u.m**3 / u.hr)
         
          flsbuilder = fls.ComponentBuilder()
          comp = flsbuilder.getComp(comp='Tube', L=100, D=50)
@@ -185,11 +186,11 @@ Make Documentation
 
     .. code-block:: console
  
-        > cd >fluidsolve\doc
+        > cd \fluidsolve\doc
         > make clean
         > make html
 
-* check readthedocs.yml in the project root
+* check `.readthedocs.yaml` in the project root
 
 * Push the Code to GitHub
 
@@ -199,7 +200,7 @@ Make Documentation
 
     * Go to https://readthedocs.org
     * Sign in and connect to your GitHub account.
-    * Seach for the project (type some characters of fluidsolve and the project should be visible)
+    * Search for the project (type some characters of fluidsolve and the project should be visible)
     * Import the project.
 
 * Trigger a Build

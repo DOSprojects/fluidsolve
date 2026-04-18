@@ -1,7 +1,8 @@
 '''
-    e00_fluids
+  e00_fluids.py
 
-    Basic example of the `fluids` and `pint` library.
+  Basic example combining fluids, pint, and fluidsolve.
+  Shows equivalent calculations with explicit engineering units.
 '''
 #******************************************************************************
 # EXTERNAL MODULE REFERENCES
@@ -14,7 +15,7 @@ import fluids.units     as fu # pylint: disable=no-name-in-module
 import fluidsolve       as fls
 # UNITS
 u         = fls.unitRegistry
-Quantity  = fls.Quantity
+Quantity  = fls.Quantity  # type: ignore[misc]
 
 #******************************************************************************
 # MAIN

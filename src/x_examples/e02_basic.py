@@ -1,10 +1,8 @@
 '''
-    e02_basic
+  e02_basic.py
 
-    Basic example with the builder class (factory pattern).
-
-    See https://fluids.readthedocs.io/tutorial.html#pressure-drop-through-piping
-
+  Basic factory-based example for path and component creation.
+  Prints component-level and path-level hydraulic results.
 '''
 #******************************************************************************
 # EXTERNAL MODULE REFERENCES
@@ -12,19 +10,20 @@
 import fluidsolve as fls
 # UNITS
 u         = fls.unitRegistry
-Quantity  = fls.Quantity
+Quantity  = fls.Quantity  # type: ignore[misc]
 
 #******************************************************************************
 # FUNCS
 #******************************************************************************
-def PrintIt(comp, Q):
+def PrintIt(comp, sense, Q):
+  '''Print component hydraulic details for a given flow and direction.'''
   print(f'{comp}')
   try:
-    print(f'K={comp.calcK(Q, 1).magnitude:.2f}')
+    print(f'K={comp.calcK(Q, sense).magnitude:.2f}')
   except:
     print('K= not available')
-  print(f'with Q={Q:.2f~P}: H={comp.calcH(Q, 1):.2f~P} P={comp.calcP(Q, 1):.2f~P}')
-  print(f'with Q=-{Q:.2f~P}: H={comp.calcH(Q, -1):.2f~P} P={comp.calcP(Q, -1):.2f~P}')
+  print(f'with Q={Q:.2f~P} sense: {sense} : H={comp.calcH(Q, sense):.2f~P} P={comp.calcP(Q, sense):.2f~P}')
+  print(f'with Q={Q:.2f~P} sense: {-sense} : H={comp.calcH(Q, -sense):.2f~P} P={comp.calcP(Q, -sense):.2f~P}')
   print('-------------\n')
 
 #******************************************************************************
@@ -34,42 +33,38 @@ if __name__ == '__main__':
 
   mu = 0.001 * u.Pa*u.s
   rho = 1000 * u.kg/u.m**3
-  e = 0.01 * u.mm
   dia = 50 *u.mm
   dia2 = 25 *u.mm
   L = 15 * u.m
 
-  medium = fls.Medium(name='test', mu=mu, rho=rho)
+  medium = fls.Medium(name='test', mu=mu, rho=rho, k=fls.Medium(prd='water').k)
   v = 3 *u.m/u.s
   Q = fls.vtoQ(v, dia)
   #
-  flsbuilder = fls.ComponentBuilder(medium=medium, e=e)
-  comps = []
-  comps.append(flsbuilder.getComp(comp='Tube', L=L, D=dia))
-  comps.append(flsbuilder.getComp(comp='Entrance', D=dia, use=1))
-  comps.append(flsbuilder.getComp(comp='Entrance', D=dia, use=-1))
-  comps.append(flsbuilder.getComp(comp='BendLong', D=dia, A=30, n=2))
-  comps.append(flsbuilder.getComp(comp='Bend', D=dia, A=45, R=5))
-  comps.append(flsbuilder.getComp(comp='SharpReduction', D1=dia, D2=dia2, use=1))
-  comps.append(flsbuilder.getComp(comp='SharpReduction', D1=dia2, D2=dia, use=-1))
-  comp_serial = flsbuilder.getComp(comp='Serial')
-  for c in comps:
-    comp_serial.addItem(c)
-  #
-  print(f'Flow to sped and vice versa (component 0):')
-  print(f'v2Q met v={v:.2f~P}: {fls.vtoQ(v, comps[0].D):.2f~P}')
-  print(f'Q2v met Q={Q:.2f~P}: {fls.Qtov(Q, comps[0].D):.2f~P}')
+  path1 = fls.getPath(
+    name='path 1', 
+    components=[
+      {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
+      {'comp': fls.getComp(comp='Entrance', D=dia)},
+      {'comp': fls.getComp(comp='Entrance', D=dia), 'sense': -1},
+      {'comp': fls.getComp(comp='BendLong', D=dia, A=30, n=2)},
+      {'comp': fls.getComp(comp='Bend', D=dia, A=45, R=5)},
+      {'comp': fls.getComp(comp='SharpReduction', D1=dia, D2=dia2)},
+      {'comp': fls.getComp(comp='Reverse', reverse=fls.getComp(comp='SharpReduction', D1=dia, D2=dia2))},
+    ],
+  )
+  print(f'Flow to speed and vice versa (component 0):')
+  print(f'v2Q met v={v:.2f~P}: {fls.vtoQ(v, path1.Components[0]['comp'].D):.2f~P}')
+  print(f'Q2v met Q={Q:.2f~P}: {fls.Qtov(Q, path1.Components[0]['comp'].D):.2f~P}')
   print('-------------\n')
   print('Detail of all components:')
-  for c in comps:
-    PrintIt(c, Q)
-  print('-------------\n')
-  print('Total (serial) component:')
-  PrintIt(comp_serial, Q)
-  print('-------------\n')
-  print (f'Calculate profile (Q en H after every component, indicidual and incremental):')
-  pts_indiv = comp_serial.calcHprofile(Q, use=1, incr=False)
-  pts_incr = comp_serial.calcHprofile(Q, use=1, incr=True)
+  for c in path1.Components:
+    PrintIt(c['comp'], c['sense'], Q)
+  print('Path:')
+  PrintIt(path1, 1, Q)
+  print (f'Calculate profile (Q en H after every component, individual and incremental):')
+  pts_indiv = path1.calcHprofile(Q, sense=1, incr=False)
+  pts_incr = path1.calcHprofile(Q, sense=1, incr=True)
   for i in range(len(pts_indiv)):
     print(f'{pts_indiv[i]} \t\t {pts_incr[i]}')
   print('-------------\n')

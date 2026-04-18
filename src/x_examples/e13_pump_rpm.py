@@ -1,7 +1,8 @@
 '''
-    e13_pump_rpm
+  e13_pump_rpm.py
 
-    Basic demo for a static QH-plot with one pump curves with different speeds and a system curve.
+  Static Q-H plot example across multiple pump speeds.
+  Overlays speed-scaled pump curves against one system curve.
 '''
 
 #******************************************************************************
@@ -10,7 +11,7 @@
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
-Quantity  = fls.Quantity
+Quantity  = fls.Quantity  # type: ignore[misc]
 
 
 #******************************************************************************
@@ -24,8 +25,8 @@ if __name__ == '__main__':
   print(d1)
   d10 = d1[0]
   
-  flsbuilder = fls.ComponentBuilder(prefix_wpt='p')
-  pump1 = flsbuilder.getComp(comp='PumpCentrifugal', dataQH=d10['dataQH'], impeller0=d10['impeller0'], speed0=d10['speed0'])
+  fls.initFluidsolve(prefix_wpt='p')
+  pump1 = fls.getComp(comp='PumpCentrifugal', dataQH=d10['dataQH'], impeller0=d10['impeller0'], speed0=d10['speed0'])
   pump1.speed = 2500
   pump1.updateCurve()
   pump2 = pump1.clone()
@@ -35,13 +36,13 @@ if __name__ == '__main__':
   pump3.speed = 1500
   pump3.updateCurve()
   #
-  system = flsbuilder.getComp(comp='Tube', L=350, D=80)
+  system = fls.getComp(comp='Tube', L=350, D=80)
   #
-  wpt1 = flsbuilder.getWpt(wpt='d', s1=pump1, s2=system)
+  wpt1 = fls.getWpt(wpt='d', s1=pump1, s2=system)
   print(f'For pump (speed0={pump1.speed0:.0f~P} with speed {pump1.speed:.0f~P} : {wpt1}')
-  wpt2 = flsbuilder.getWpt(wpt='d', s1=pump2, s2=system)
+  wpt2 = fls.getWpt(wpt='d', s1=pump2, s2=system)
   print(f'For pump (speed0={pump2.speed0:.0f~P} with speed {pump2.speed:.0f~P} : {wpt2}')
-  wpt3 = flsbuilder.getWpt(wpt='d', s1=pump3, s2=system)
+  wpt3 = fls.getWpt(wpt='d', s1=pump3, s2=system)
   print(f'For pump (speed0={pump3.speed0:.0f~P} with speed {pump3.speed:.0f~P} : {wpt3}')
   #
   plt = fls.PlotQHcurve(

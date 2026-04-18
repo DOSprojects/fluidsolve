@@ -1,6 +1,41 @@
 '''
-This module implements a class to store catalogue.
-The data is internally stored in a dictionary.
+Catalogue utilities for loading and searching component library data.
+
+This module provides the Catalogue class, which loads one or more JSON
+libraries and offers query helpers to find matching libraries and records.
+Loaded data is stored in-memory as dictionaries keyed by library name.
+
+Main capabilities:
+
+* load built-in and user-provided catalogue directories,
+* list or filter libraries by keyword expressions,
+* search records with logical and comparison criteria,
+* evaluate case-sensitive or case-insensitive matching.
+
+Query model:
+
+* logical operators: ``AND``, ``OR``, ``NOT``
+* grouping with parentheses: ``(...)``
+* comparison operators for record fields: ``=``, ``!=``, ``<``, ``<=``, ``>``, ``>=``
+* wildcard support for library keyword matching via ``*``
+
+Typical workflow:
+
+1. Create ``Catalogue()`` and load data (default behavior at init).
+2. Use ``findLibraries(...)`` to narrow candidate libraries.
+3. Use ``searchInLibrary(...)`` to retrieve matching records.
+
+Examples::
+
+  cat = Catalogue()
+  libs = cat.findLibraries('pump AND APV')
+  records = cat.searchInLibrary(
+      libs,
+      'T = centrifugal AND impeller0 = 110 AND speed0 = 2900'
+  )
+
+The parser is intentionally lightweight and expression-oriented, which keeps
+catalogue searches readable while still supporting practical filtering logic.
 '''
 # =============================================================================
 # IMPORTS
@@ -12,24 +47,21 @@ from operator import eq, ne, lt, gt, le, ge
 from typing               import Optional, Any
 # module own
 import fluidsolve.aux_tools as flsa
-import fluidsolve.medium    as flsm
+import fluidsolve.medium    as flsme
 # units
-u         = flsm.unitRegistry
-Quantity  = flsm.Quantity
+u         = flsme.unitRegistry
+Quantity  = flsme.Quantity  # type: ignore[misc]
 # =============================================================================
 # PUMPCATALOGUE DATA CLASS
 # =============================================================================
 class Catalogue ():
-  ''' Class to search some catalogues.
-      The catalogues are provided as json files.
+  ''' Search one or more catalogues loaded from JSON files.
 
   Args:
-    path (list, optional): List of path names where the catalogues are found.
-      These can be appended to the build in path (with the build in catalogues). See `loadAllData`.
-      Defaults to [].
+    path (list, optional): List of paths where catalogues are found.
+      These are appended to the built-in catalogue path.
     load (bool, optional): Load the catalogue data at init or not.
-      Defaults to True.
-
+      
 
   Returns:
     None
@@ -61,11 +93,10 @@ class Catalogue ():
 
 
   def loadAllData(self, buildin: bool=True) -> None:
-    '''  Load the libraries.
+    ''' Load all catalogue libraries.
 
     Args:
-        buildin (bool, optional): also load the buildin catalogues
-        Defaults to True.
+      buildin (bool, optional): Also load the built-in catalogues.
     '''
     allpaths = list(self._path)
     if buildin:
@@ -83,16 +114,16 @@ class Catalogue ():
               print(f'Error decoding JSON from file {file_path}: {e}')
 
   def findLibraries(self, criteria: str='', matchcase: bool=True) -> list:
-    ''' find all libraries containing some conditions
+    ''' Find library names that match the given criteria.
 
     Args:
-        criteria (str): Criteria string (logical expression).
-                      If this is empty, then all libraries are returned.
-                      Can be a combination with parentheses, AND, OR and NOT and the * wildcard can be used.
-        matchcase (bool): Case must match or not (Default=True)
+      criteria (str): Logical criteria expression.
+        If empty, all libraries are returned.
+        Parentheses, AND, OR, NOT, and `*` wildcards are supported.
+      matchcase (bool): Whether matching is case-sensitive.
 
     Returns:
-        list: Matching library names.
+      list: Matching library names.
 
     Examples:
       lib = cat.findLibraries()
@@ -121,19 +152,19 @@ class Catalogue ():
       return found
 
   def searchInLibrary(self, lib: str | list, criteria: str, matchcase: bool=True) -> list[dict]:
-    ''' Find all records in a library or list of libraries matching the given criteria.
+    ''' Find records in one or more libraries matching the criteria.
 
     Args:
-        lib (str | list): Library name or list of names to search in
-        criteria (str): Criteria string (logical expression).
-        matchcase (bool): Case must match or not (Default=True)
+      lib (str | list): Library name or list of library names.
+      criteria (str): Logical criteria expression.
+      matchcase (bool): Whether matching is case-sensitive.
 
     Returns:
-        list[dict]: The list of records found.
+      list[dict]: Matching records.
 
     Examples:
       items = cat.searchInLibrary(lib, 'OD < 20')
-      items = cat.searchInLibrary(lib, 'WT >= 2 AND DN < 80')        
+      items = cat.searchInLibrary(lib, 'WT >= 2 AND DN < 80')
     '''
     if isinstance(lib, str):
         lib = [lib]
@@ -152,19 +183,22 @@ class Catalogue ():
     return found
 
   def _parseExpression(self, tokens: list) -> dict:
-    ''' Parse a (criterion) expression presented as a list of tokens.
-        One token can be a string or a value. A string with spaces in it has to be delimited in single or double quotes.
-        It can also be a trio field operand value (e.g. WT >= 2.4); again a field with spaces in it has to be delimited in single or double quotes.
-        It can be AND, OR or NOR or an opening or closing parenthesis.
+    ''' Parse a criteria expression represented as tokens.
 
-        This internal method first is used to parse an input criterion to select one or a number of available libraries.
-        Secondly it is used to select one or more records form a library or list of libraries.
+      A token can be a string literal or a value. Strings with spaces
+      must be enclosed in single or double quotes.
+      A token group can also be in the form `field op value`
+      (for example: `WT >= 2.4`).
+      Supported operators are AND, OR, NOT, and parentheses.
+
+      This method is used for both library-level and record-level
+      criteria parsing.
 
     Args:
         tokens (list): The input tokens.
 
     Returns:
-        dict: A multilevel dict with the parsed expression.
+      dict: Parsed expression tree.
 
     Examples:
         _parseExpression(['appendage', 'AND', 'bend'])
@@ -234,22 +268,22 @@ class Catalogue ():
     return stack[0]
 
   def _evalLibExpression(self, expr: str, values: list, matchcase: bool=True) -> bool:
-    ''' This internal method is used to parse an input criterion to select one or a number of available libraries.
+    ''' Evaluate a parsed expression against library metadata values.
 
     Args:
-        expr (str): This is the parsed tokenized search expression.
-        values (list): This is the list of keywords to be searched.
-        matchcase (bool, optional): Has the case to match or not. Defaults to True.
+      expr (str): Parsed expression tree.
+      values (list): Keywords to test against the expression.
+      matchcase (bool, optional): Whether matching is case-sensitive.
 
     Returns:
-        bool: True is one of the values matches the expression.
+      bool: True when the expression matches.
     '''
     def match(term: str) -> bool:
       if not matchcase:
         term = term.lower()
       return any(fnmatch.fnmatchcase(value, term) for value in values_in)
 
-    def evalExpr(expr) -> bool:
+    def evalExpr(expr: Any) -> bool:
       if isinstance(expr, str):
         return match(expr)
       if 'AND' in expr:
@@ -266,34 +300,37 @@ class Catalogue ():
       values_in = [v.lower() for v in values]
     return evalExpr(expr)
 
-  def _evalRecExpression(self, expr, rec, matchcase=True):
-    '''This method is used to select one or more records form a library or list of libraries.
+  def _evalRecExpression(self, expr: Any, rec: Any, matchcase: Any=True) -> Any:
+    ''' Evaluate a parsed expression against a single record.
 
     Args:
-        expr (_type_): This is the parsed tokenized search expression.
-        rec (_type_): This is the list of records to be searched.
-        matchcase (bool, optional): Has the case to match or not. Defaults to True.
+      expr (Any): Parsed expression tree.
+      rec (Any): Record dictionary to evaluate.
+      matchcase (bool, optional): Whether matching is case-sensitive.
+
+    Returns:
+      bool: True when the record matches the expression.
     '''
-    def parseCriterion(atom: str):
-      # Supported operators, longest first
+    def parseCriterion(atom: str) -> Any:
+      # Supported operators (longest first)
       ops = ['>=', '<=', '!=', '=', '<', '>']
       for op in ops:
         if op in atom:
           parts = atom.split(op, 1)
           field = parts[0].strip()
           value = parts[1].strip()
-          # Remove quotes if present
+          # Remove surrounding quotes when present.
           if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
             value = value[1:-1]
           return field, op, value
       raise ValueError(f'Invalid atomic criterion: {atom}')
 
-    def match(atom):
+    def match(atom: Any) -> Any:
         field, op_str, val = parseCriterion(atom)
         if field not in rec:
             return False
         rec_val = rec[field]
-        # Try to convert val to type of rec_val
+        # Try to cast criterion value to the record value type.
         try:
             if isinstance(rec_val, (int, float)):
                 val_cast = type(rec_val)(val)
@@ -306,7 +343,7 @@ class Catalogue ():
             val_cast = val_cast.lower()
         return op_map[op_str](rec_val, val_cast)
 
-    def evalExpr(expr):
+    def evalExpr(expr: Any) -> Any:
         if isinstance(expr, str):
             return match(expr)
         if 'AND' in expr:

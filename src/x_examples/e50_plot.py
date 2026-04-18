@@ -1,8 +1,8 @@
 '''
-    e50_plot
+  e50_plot.py
 
-    Basic example for the plot module.
-
+  Basic plotting-module example.
+  Demonstrates curves, lines, annotations, and widgets.
 '''
 #******************************************************************************
 # EXTERNAL MODULE REFERENCES

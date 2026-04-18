@@ -1,6 +1,5 @@
-# __init__.py
 '''
-    fluidsolve
+__init__.py
 
-    tools
+Utility scripts used to maintain examples, tests, and package init files.
 '''

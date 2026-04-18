@@ -1,6 +1,7 @@
 '''
-Tool to generate the __init__.py
+gen_ini.py
 
+Generate package __init__.py import/export lists from module symbols.
 '''
 import os
 import shutil
@@ -41,17 +42,19 @@ def extractSymbols(fname: str, exclude: dict) -> tuple:
       print(f'Syntax error in {fname}: {e}')
   return (symbols_var, symbols_fun, symbols_cls)
 
-def generate(path: str, files: list, exclude: dict={}) -> str:
+def generate(path: str, files: list, exclude: dict | None = None) -> str:
   ''' Generate the content for a __init__.py file.
 
   Args:
       path (str): path of library
       files (list): list with filenaes
-      exclude (dict, optional): names to exclude. Defaults to {}.
+      exclude (dict, optional): Names to exclude by kind.
 
   Returns:
       str: The __init__.py file
   '''
+  if exclude is None:
+    exclude = {}
   symbols_var = []
   symbols_cls = []
   symbols_fun = []
@@ -96,7 +99,7 @@ if __name__ == '__main__':
   print('\nGenerating __init__.py file...\n')
   path_script = os.path.abspath(os.path.dirname(__file__))
   path_lib = os.path.normpath(os.path.join(path_script, '..', '..', 'src', 'fluidsolve'))
-  file_init = os.path.join(path_script, 'init.py')
+  file_init = os.path.join(path_lib, '__init__.py')
   file_bak = os.path.join(path_script, 'init.bak')
   #
   exclude = {

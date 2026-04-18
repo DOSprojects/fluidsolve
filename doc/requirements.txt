@@ -1,6 +1,8 @@
 sphinx
-sphinx_rtd_theme
-myst-parser
+sphinx-rtd-theme
+sphinx-gallery
+sphinx-toolbox
+docutils==0.20
 numpy
 scipy
 matplotlib

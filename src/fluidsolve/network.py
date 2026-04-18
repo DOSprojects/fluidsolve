@@ -1,78 +1,134 @@
 '''
-This module implements the network functionality
-A lot is based on graph math.
+Hydraulic network solver using graph topology plus component physics.
+
+This module represents a hydraulic system as a graph:
+
+* nodes are connection points,
+* segments (edges) are component port-to-port links,
+* a spanning tree and chord set define fundamental cycles.
+
+The solver assembles a nonlinear system from two equation groups:
+
+* node continuity equations, assembled in matrix B,
+* loop energy equations, assembled in matrix C using component head laws.
+
+Unknowns are segment flow rates. Component physics is delegated to each
+component through calcH(Q, sense). The network module is responsible for
+topology construction, incidence matrices, validation, and numerical solve.
+
+Internal data artifacts exposed by the class include:
+
+* ``Segments``: per-segment dictionaries with node endpoints, sense, ports,
+  and owning component,
+* ``Nodes`` / ``Edges``: graph-level views used by solvers and diagnostics,
+* ``Adjacency`` and ``SpanningTree``: traversal structures used for cycle
+  basis generation,
+* ``FundamentalCycles``: loop basis used for energy equations,
+* ``Funcs``: assembled ``B`` and ``C`` matrices,
+* ``Result``: solved per-segment flow/head values.
+
+Assumptions and conventions:
+
+* the topology should form a connected graph,
+* each component defines ports and usable internal connections,
+* segment direction and sense are tracked explicitly,
+* energy sources and resistances are validated per loop before solve.
+
+Solve pipeline summary:
+
+1. Register components and expand them into graph segments.
+2. Build adjacency, spanning tree, and fundamental cycle basis.
+3. Assemble incidence matrices ``B`` and ``C``.
+4. Solve flow unknowns with Newton-Raphson.
+5. Back-calculate and store per-segment ``Q`` and ``H`` results.
+
+Typical workflow::
+
+  net = getNetwork(name='N1', components=[...])
+  result = net.calcNetwork(iguess=1.0)
+  print(net.toString(detail=1))
+
+This design keeps topology logic centralized while allowing each component
+class to own its physical constitutive behavior.
 '''
-#******************************************************************************
+# =============================================================================
 # IMPORTS
-#******************************************************************************
-from typing                   import Optional
-import numpy                  as np
-from scipy.optimize           import fsolve
+# =============================================================================
+from typing import Optional, Any
+import numpy as np
+from scipy.optimize import fsolve
 # module own
-import fluidsolve.medium      as flsm
+import fluidsolve.medium      as flsme
 import fluidsolve.aux_tools   as flsa
 import fluidsolve.comp_base   as flsb
 import fluidsolve.comp_resist as flsc
 # units
-u         = flsm.unitRegistry
-Quantity  = flsm.Quantity
+u         = flsme.unitRegistry
+Quantity  = flsme.Quantity  # type: ignore[misc]
 
-#******************************************************************************
-# BASE CLASSES
-#******************************************************************************
+# =============================================================================
+# NETWORK CLASS
+# =============================================================================
+class Network:
+  ''' Class representing a hydraulic network.
 
-#******************************************************************************
-# Network
-class Network ():
-  ''' Network class to represent a hydraulic network.
-      This class is used to calculate flows and pressure drops in a network of hydraulic components.
-
-    Args:
-    kwargs (dict): Keyword arguments for network initialization.
+  Args:
+    name (str, optional): Network label.
+    components (list, optional): Initial list of components to register.
   '''
+  # --------------------------------------------------------------------------
+  # FIXED PROPERTIES
 
-  def __init__(self, **kwargs: int) -> None:
+  # --------------------------------------------------------------------------
+  # INITIALIZE
+  def __init__(self, **kwargs: Any) -> None:
+    # arguments
     args_in = flsa.GetArgs(kwargs)
     self._name: str = args_in.getArg(
       'name',
       [
-          flsa.vFun.default(''),
-          flsa.vFun.istype(str),
+        flsa.vFun.default(''),
+        flsa.vFun.istype(str),
       ]
     )
-    segments: list = args_in.getArg(
-      'segments',
+    components: list = args_in.getArg(
+      'components',
       [
           flsa.vFun.default([]),
           flsa.vFun.istype(list),
       ]
     )
-    #
-    self._segments          : list  = []
-    self._nodes             : list  = []
-    self._adjacency         : dict[str, list]  = {}
-    self._spanningtree      : list  = []
-    self._fundamentalcycles : list  = []
-    self._allcycles         : list  = []
-    self._funcs             : dict[str, list] = {'N': [], 'L': []}
-    self._result            : list  = []
-    self.addSegments(segments)
+    args_in.isEmpty()
+    # instance vars
+    self._components        : list = []
+    self._segments          : dict = {}
+    self._nodes             : list = []
+    self._adjacency         : dict = {}
+    self._spanningtree      : list = []
+    self._fundamentalcycles : list = []
+    self._allcycles         : list = []
+    self._funcs             : dict = {'B': [], 'C': []}
+    self._result            : list = []
+    # some calculations
+    self.addComponents(components)
 
+  # --------------------------------------------------------------------------
+  # PROPERTIES
   @property
   def Segments(self) -> list[dict]:
-    '''Return the segments of the network.
+    ''' Return the segments of the network.
 
     Returns:
-      list[dict]: List of segments in the network.
+      list[dict]: Segment dictionary.
     '''
     return self._segments
 
   @property
   def Nodes(self) -> list[str]:
-    ''' Return the nodes of this network.
+    ''' Return the nodes in this network.
 
     Returns:
-        list[str]: nodes
+      list[str]: Node list.
     '''
     return self._nodes
 
@@ -81,480 +137,493 @@ class Network ():
     ''' Return the edges in this network.
 
     Returns:
-        list[tuple[str, str]]: edges
+      list[tuple[str, str]]: Edge list.
     '''
-    return [(s['B'], s['E']) for s in self._segments]
+    return list(self._segments.keys())
 
   @property
   def Adjacency(self) -> dict[str, list[str]]:
-    ''' Return adjacency list.
+    ''' Return the adjacency list.
 
     Returns:
-        dict[str, list[str]]: adjacency list in graph.
+      dict[str, list[str]]: Adjacency list.
     '''
     return self._adjacency
 
   @property
   def SpanningTree(self) -> list[tuple[str, str]]:
-    ''' Return spanning tree.
+    ''' Return the spanning tree.
 
     Returns:
-        list[tuple[str, str]]: spanning tree in graph.
+      list[tuple[str, str]]: Spanning tree.
     '''
     return self._spanningtree
 
   @property
-  def AllCycles(self) -> list[list[str]]:
-    ''' Return all cycles in graph.
-
-    Returns:
-        list[list[str]]: all cycles in graph.
-    '''
-    return self._allcycles
-
-  @property
   def FundamentalCycles(self) -> list[list[str]]:
-    ''' Return fundamental cycles in graph.
+    ''' Return fundamental cycles in the graph.
 
     Returns:
-        list[list[str]]: fundamental cycles in graph.
+      list[list[str]]: Fundamental cycles.
     '''
     return self._fundamentalcycles
 
   @property
   def Funcs(self) -> dict[str, list]:
-    ''' Return the functions to execute the calculation algorithm (Newton Raphson).
+    ''' Return the incidence matrices used to build the system of equations.
 
     Returns:
-        dict[str, list]: Data needed to create the system of equations.
+      dict[str, list]: B and C matrices.
     '''
     return self._funcs
 
   @property
   def Result(self) -> list[dict]:
-    ''' Return the result of the calculation algorithm.
+    ''' Return the solver result.
 
     Returns:
-        list[dict]: for every segment: the name, Q and H.
+      list[dict]: Per segment: name, Q, and H.
     '''
     return self._result
 
-  def addSegments(self, segments: list[tuple[str, str, flsb.Comp_Base]]) -> None:
-    ''' Add a segment to the network
+  #----------------------------------------------------------------------------
+  # METHODS
+  def addComponents(self, components: list) -> None:
+    ''' Add components to the network and rebuild the graph.
 
     Args:
-        segments (list[tuple[str, str, flsb.Comp_Base]]): the segments to add.
-
+      components (list): List of component dicts with keys ``comp``, ``nodes``, and optional ``sense``.
     '''
-    # Add segments nodes to the network
-    for s in segments:
-      if not isinstance(s, (set, tuple, list)):
-        raise ValueError(f'Invalid section format: {s}')
-      if len(s) != 3:
-        raise ValueError(f'Invalid section format: {s}')
-      lB, lE, lcomp = s
-      if not isinstance(lB, str):
-        raise ValueError(f'Invalid section format (B): {s}')
-      if not isinstance(lE, str):
-        raise ValueError(f'Invalid section format (E): {s}')
-      if not isinstance(lcomp, flsb.Comp_Base):
-        raise ValueError(f'Invalid section format (component): {s}')
-      lname = f'{lB}-{lE}'
-      if lname in self._segments:
-        raise ValueError(f'Section {lname} already exists')
-      if lB not in self._nodes:
-        self._nodes.append(lB)
-      if lE not in self._nodes:
-        self._nodes.append(lE)
-      #TODO: comp can be string (component name) or component
-      self._segments.append({'name': lname, 'B': lB, 'E': lE, 'comp': lcomp, 'use': 1.0})
+    for item in components:
+        if not isinstance(item, dict):
+            raise ValueError(f'Invalid component entry: {item}')
+        if 'comp' not in item or 'nodes' not in item:
+            raise ValueError(f'Component entry must contain "comp" and "nodes": {item}')
+        nodes = item['nodes']
+        sense = item.get('sense', +1)
+        comp = item['comp']
+        if len(nodes) != comp.nports:
+          raise ValueError(f'Node count {len(nodes)} does not match component ports {comp.nports}')
+        if sense not in (+1, -1):
+          raise ValueError(f'sense must be +1 or -1, got {sense}')
+        if not isinstance(comp, flsb.Comp_Base):
+          raise ValueError(f'Unknown component: {comp}')
+        if not isinstance(nodes, (list, tuple)):
+          raise ValueError(f'Invalid nodes: {nodes}')
+        self._components.append({'nodes': list(nodes), 'sense': sense, 'comp': comp,  })
     self._recalc()
 
-  def findSegment(self, start: str, stop: str = '') -> dict | None:
-    '''Find the segment by start and stop nodes.
+  def calcNetwork(self, iguess: Any=1.0) -> Any:
+    ''' Solve the network using Newton-Raphson.
 
     Args:
-      start (str): Start node name.
-      stop (str): Stop node name.
+      iguess (float): Initial flow guess for all segments.
 
     Returns:
-      int: Index of the section or -1 if not found.
-    '''
-    if stop == '':
-      split = start.split('-')
-      if len(split) != 2:
-        raise ValueError(f'Invalid segment name: {start}')
-      else:
-        start, stop = split
-    segment = None
-    for s in self._segments:
-      if (s['B'] == start and s['E'] == stop):
-        segment = s.copy()
-        segment['idx'] = self._segments.index(s)
-    if segment is None:
-      for s in self._segments:
-        if (s['B'] == start and s['E'] == stop) or (s['B'] == stop and s['E'] == start):
-          segment = s.copy()
-          segment['use'] = -1.0
-          segment['idx'] = self._segments.index(s)
-    return segment
-
-  def findShortestPath(self, start: str, stop: str) -> Optional[list[str]]:
-    '''Method to find the shortest path between two nodes of a graph.
-       Algorithm for an unweighted undirected graph using Breadth-First Search (BFS).
-
-    Args:
-      start (str): Start node.
-      stop (str): End node.
-
-    Returns:
-        Optional[list[str]]: Shortest path between 2 nodes.
-    '''
-    if start not in self._nodes or stop not in self._nodes:
-      return None
-    if start == stop:
-      return [start, stop]
-    explored = []
-    # queue for traversing the graph in the BFS
-    queue = [[start]]
-    # loop to traverse the graph with the help of the queue
-    while queue:
-      path = queue.pop(0)
-      node = path[-1]
-      # check if the current node is not visited
-      if node not in explored:
-        neighbours = self._adjacency[node]
-        # Loop to iterate over the neighbours of the node
-        for neighbour in neighbours:
-          new_path = list(path)
-          new_path.append(neighbour)
-          queue.append(new_path)
-          # if the neighbour node is the goal then end
-          if neighbour == stop:
-            return new_path
-        explored.append(node)
-    # Condition when the nodes are not connected
-    return None
-
-  def segmentsFromNodes(self, nodes: list[str]=[]) -> Optional[list[str]]:
-    '''Convert nodes to segments.
-
-    Args:
-      nodes (list): the input nodes.
-
-    Returns:
-      Optional[list]: List of segments or None if not applicable.
-    '''
-    lnodes = len(nodes)
-    if lnodes < 2:
-      return []
-    segments = []
-    for i in range(lnodes - 1):
-      segments.append(f'{nodes[i]}-{nodes[i+1]}')
-    #TODO: klopt dit? wanneer wel en waneer niet?
-    if nodes[0] != nodes[lnodes-1]:
-      segments.append(f'{nodes[lnodes-1]}-{nodes[0]}')
-    return segments
-
-  def segmentsFromAdjacency(self, node: str, adj: list[str]=[]) -> Optional[list[str]]:
-    '''Convert nodes to segments.
-
-    Args:
-      node (str): the start node.
-      adj (list): the adjacent nodes.
-
-    Returns:
-      Optional[list]: List of segments or None if not applicable.
-    '''
-    if adj == []:
-      return []
-    segments = []
-    for a in adj:
-      segments.append(f'{node}-{a}')
-    return segments
-
-  def calcNetwork(self, iguess = 1.0) -> None:
-    '''  Resolve the network.
-
-    Args:
-        iguess (float | list, optional): The initial guess.
-          This can be a float; then this value is used as start guess for all results.
-          Can als be a list with the same number of elements as the final result.
-          Defaults to 1.0.
+      list[dict]: Per segment: name, Q, and H.
     '''
 
-    def F(x: list[float], args: dict[str, list]) -> list[float]:
+    def F(x: Any) -> Any:
+      Q = np.asarray(x)
       res = []
-      for n in args['N']:
-        res.append(sum(x[i] * n[i] for i in range(len(n))))
-      for l in args['L']:
-        res.append(sum(l[i]['d'] * l[i]['c'].calcH(x[i], 1).magnitude for i in range(len(l))))
+      # Node continuity equations: B @ Q = 0
+      if B.shape[0] > 1:
+        res.extend((B @ Q)[:-1])
+      # Loop energy equations: C @ H(Q) = 0
+      if C.shape[0] > 0:
+          H = np.zeros(nseg)
+          for i, key in enumerate(seg_keys):
+              comp = self._segments[key]['comp']
+              H[i] = comp.calcH(Q[i] * u.m**3 / u.h, +1).magnitude
+          res.extend(C @ H)
       return res
 
-    # Initial guess
-    if isinstance(iguess, (int, float)):
-      initial_guess = [iguess] * (len(self._funcs['N']) + len(self._funcs['L']))
-    elif isinstance(iguess, list):
-      if len(iguess) != (len(self._funcs['N']) + len(self._funcs['L'])):
-        raise ValueError(f'Initial guess length {len(iguess)} does not match number of equations {len(self._funcs["N"]) + len(self._funcs["L"])}')
-      initial_guess = iguess
-    initial_guess = [iguess] * (len(self._funcs['N']) + len(self._funcs['L']))
-    #print('initial_guess:', initial_guess)
-    # Solve the system of equations
-    FDEF = self._funcs
-    result, self._infodict, ier, msg = fsolve(func=F, x0=initial_guess, args=FDEF, full_output=1)
-    self._result = []
+    B = self._funcs['B']    # (n_nodes, n_segments)
+    C = self._funcs['C']    # (n_loops, n_segments)
+    seg_keys = list(self._segments.keys())
+    nseg = len(seg_keys)
+    neq = max(B.shape[0] - 1, 0) + C.shape[0]
+    if nseg != neq:
+      raise ValueError(f'Inconsistent equation system: {nseg} unknown flows but {neq} equations')
+    x0 = np.full(nseg, iguess)
+    sol, _, ier, msg = fsolve(F, x0, full_output=True)
     if ier != 1:
-      raise ValueError(f'Error in Network "{self._name}" calculation: {msg}')
-    # process result
-    n = len(self._segments)
-    for i in range(n):
-      Q = flsa.toUnits(result[i], u.m**3/u.h)
-      self._result.append({'s':self._segments[i]['name'], 'Q': Q, 'H': self._segments[i]['comp'].calcH(Q, 1)})
+        raise ValueError(msg)
+    self._result = []
+    for i, key in enumerate(seg_keys):
+        Q = sol[i] * u.m**3 / u.h
+        H = self._segments[key]['comp'].calcH(Q, +1)
+        self._result.append({'segment': key, 'Q': Q, 'H': H})
+    return self._result
 
+  #----------------------------------------------------------------------------
+  # GRAPH BUILDING
   def _recalc(self) -> None:
-    ''' Recalculate all graph properties.
-    '''
+    ''' Rebuild the full graph representation after component changes. '''
+    self._calcSegments()
     self._calcAdjacency()
     self._calcSpanningTree()
-    self._calcAllCycles()
     self._calcSmallestCycleBase()
+    self._calcValidation()
     self._calcFuncs()
 
-  def _pathRotateToSmallest(self, path: list) -> list:
-    ''' Rotate a path so it starts with the smallest node.
-
-    Args:
-        path (list): the source path
-
-    Returns:
-        list: the rotated path.
-    '''
-    min_index = path.index(min(path))
-    return path[min_index:] + path[:min_index]
-
-  def _pathInvert(self, path: list) -> list:
-    ''' Invert the path order.
-
-    Args:
-        path (list): the source path
-
-    Returns:
-        list: The inverted path.
-    '''
-    return self._pathRotateToSmallest(path[::-1])
+  def _calcSegments(self) -> None:
+    ''' Build segment dictionary from component port definitions. '''
+    nodeset = set()
+    self._segments = {}
+    for item in self._components:
+      nodes = item['nodes']
+      sense = item['sense']
+      comp = item['comp']
+      nodeset.update(nodes)
+      for port_begin, port_end in comp.ports:
+        node_begin = nodes[port_begin - 1]
+        node_end = nodes[port_end - 1]
+        key = f'{comp.name}:{node_begin}->{node_end}'
+        if key in self._segments:
+          raise ValueError(f'Duplicate segment {key}')
+        self._segments[key] = {'B': node_begin, 'E': node_end, 'sense': sense, 'pB': port_begin, 'pE': port_end, 'comp': comp, 'name': key}
+    self._nodes = tuple(sorted(nodeset))
 
   def _calcAdjacency(self) -> None:
-    ''' Create the list of adjacency nodes.
-    '''
+    ''' Build an adjacency list including flow sense. '''
     self._adjacency = {}
-    for s in self._segments:
-      b = s['B']
-      e = s['E']
-      if b not in self._adjacency:
-        self._adjacency[b] = []
-      if e not in self._adjacency:
-        self._adjacency[e] = []
-      if e not in self._adjacency[b]:
-        self._adjacency[b].append(e)
-      if b not in self._adjacency[e]:
-        self._adjacency[e].append(b)
+    for key, seg in self._segments.items():
+      B = seg['B']
+      E = seg['E']
+      sense = seg['sense']
+      self._adjacency.setdefault(B, []).append((key, E, sense))
+      self._adjacency.setdefault(E, []).append((key, B, -sense))
 
   def _calcSpanningTree(self) -> None:
-    ''' Create the spanning tree.
-    '''
+    ''' Compute the spanning tree using depth-first search. '''
+
+    def dfs(start_node: Any) -> Any:
+      visited.add(start_node)
+      for key, next_node, sense in self._adjacency.get(start_node, []):
+        if next_node not in visited:
+          self._spanningtree.append((key, start_node, next_node, sense))
+          dfs(next_node)
+
     self._spanningtree = []
-    start = self._segments[0]['B']
-    visited = []
-    stack = [(start, None)]
-    while stack:
-      node, parent = stack.pop()
-      if node in visited:
-        continue
-      visited.append(node)
-      if parent is not None:
-        self._spanningtree.append((min(node, parent), max(node, parent)))
-      for neighbor in self._adjacency[node]:
-        if neighbor not in visited:
-          stack.append((neighbor, node))
+    visited = set()
+    if self._nodes:
+      dfs(self._nodes[0])
 
-  def _calcAllCycles(self) -> None:
-    '''Find all simple cycles in the network.
+
+  def _calcSmallestCycleBase(self) -> Any:
+    ''' Build a fundamental cycle basis from spanning-tree chords.
 
     Returns:
-      list[list[str]]: list with all cycles.
+      None
     '''
 
-    def dfs(path: list[str], visited_edges: set) -> None:
-      start_node = path[0]
-      last_node = path[-1]
-      edges = [(s['B'], s['E']) for s in self._segments]
-      for node1, node2 in edges:
-        if last_node in (node1, node2):
-          next_node = node2 if node1 == last_node else node1
-          edge = tuple(sorted((last_node, next_node)))
-          if edge in visited_edges:
-            continue
-          if next_node not in path:
-            visited_edges.add(edge)
-            dfs(path + [next_node], visited_edges)
-            visited_edges.remove(edge)
-          elif len(path) > 2 and next_node == start_node:
-            # Normalize cycle to start with smallest node
-            cycle = self._pathRotateToSmallest(path[:])
-            cycle.append(cycle[0])
-            invcycle = self._pathInvert(cycle)
-            if cycle not in self._allcycles and invcycle not in self._allcycles:
-              self._allcycles.append(cycle)
+    def dfs(node_current: Any, node_target: Any, visited: Any) -> Any:
+      if node_current == node_target:
+        return []
+      visited.add(node_current)
+      for seg_key, node_next, sense in self._adjacency.get(node_current, []):
+        if seg_key not in tree_keys:
+          continue  # Only follow tree edges.
+        if node_next in visited:
+          continue
+        result = dfs(node_next, node_target, visited)
+        if result is not None:
+          seg = self._segments[seg_key]
+          if seg['sense'] > 0:
+            return [(seg_key, seg['B'], seg['E'], 1)] + result
+          else:
+            return [(seg_key, seg['E'], seg['B'], 1)] + result
+      return None
 
-    # no network
-    if len(self._segments) < 2:
-      self._allcycles = []
-      return
-    # special case: network = A-B, B-A
-    if len(self._segments) == 2 and self._segments[0]['B'] == self._segments[1]['E'] and self._segments[0]['E'] == self._segments[1]['B']:
-      self._allcycles = [[self._segments[0]['B'], self._segments[0]['E'], self._segments[0]['B']]]
-      return
-    # rest
-    self._allcycles = []
-    nodes = self._nodes
-    for node in nodes:
-      dfs([node], set())
-
-  def _calcSmallestCycleBase(self) -> Optional[list]:
-    ''' Find the smallest cycle base.
-
-    Returns:
-        Optional[list]: list with fundamental cycles.
-    '''
-    # no network
-    if len(self._segments) < 2:
-      self._fundamentalcycles = []
-      return
-    # special case: network = A-B, B-A
-    if len(self._segments) == 2 and self._segments[0]['B'] == self._segments[1]['E'] and self._segments[0]['E'] == self._segments[1]['B']:
-      self._fundamentalcycles = [[self._segments[0]['B'], self._segments[0]['E'], self._segments[0]['B']]]
-      return
-    # rest
+    # Set of tree segment keys for fast lookup
+    tree_keys = {k for k, _, _, _ in self._spanningtree}
     self._fundamentalcycles = []
-    edges = [(s['B'], s['E']) for s in self._segments]
-    tree_adj = {}
-    for u, v in self._spanningtree:
-      if u not in tree_adj:
-        tree_adj[u] = []
-      tree_adj[u].append(v)
-      if v not in tree_adj:
-        tree_adj[v] = []
-      tree_adj[v].append(u)
-    all_edges = [(min(u, v), max(u, v)) for u, v in edges]
-    non_tree_edges = [x for x in all_edges if x not in self._spanningtree]
-    for u, v in non_tree_edges:
-      path = self._findPath(tree_adj, u, v)
-      if path:
-        cycle = path + [u]
-        self._fundamentalcycles.append(cycle)
+    # Each chord (non-tree edge) defines one fundamental cycle.
+    for seg_key, seg in self._segments.items():
+      if seg_key in tree_keys:
+        continue  # Skip tree edges; process chords only.
+      node_start = seg['B']
+      node_end = seg['E']
+      sense = seg['sense']
+      path = dfs(node_start, node_end, set())
+      if not path:
+        continue
+      # Closing chord (always added explicitly)
+      if sense > 0:
+        cycle = path + [(seg_key, node_start, node_end, 1)]
+      else:  
+        cycle = path + [(seg_key, node_end, node_start, 1)]
+      self._fundamentalcycles.append(self._sortCycle(cycle))
 
-  def _findPath(self, tree: dict[str, list[str]], start: str, end: str, path: list[str]=[]) -> Optional[list[str]]:
-    ''' Find a path in a graph using the adjacency tree.
+  def _calcValidation(self) -> None:
+    ''' Validate fundamental loop equations.
 
-    Args:
-        tree (dict[str, list[str]]): adjacency tree to parse
-        start (str): start node.
-        end (str): end node.
-        path (list[str], optional): the path being constructed. Defaults to [].
-
-    Returns:
-        Optional[list[str]]: the resulting path.
+    Raises ValueError when a loop is physically invalid.
     '''
-    path = path + [start]
-    if start == end:
-      return path
-    for node in tree[start]:
-      if node not in path:
-        newpath = self._findPath(tree, node, end, path)
-        if newpath:
-          return newpath
-    return None
+    txt = ''
+    if not self._fundamentalcycles:
+      return 'Empty'
+    has_source = any(seg['comp'].sign > 0 for seg in self._segments.values())
+    if not has_source:
+      raise ValueError('Network has no energy source (no pump / pressure source present)')
+    for li, loop in enumerate(self._fundamentalcycles):
+      seen = set()
+      has_resistance = False
+      txt += f'Loop {li + 1}:\n'
+      for seg_key, B, E, sense in loop:
+        if seg_key in seen:
+          raise ValueError(f'Loop {li + 1}: segment "{seg_key}" appears more than once')
+        seen.add(seg_key)
+        if sense not in (-1, +1):
+          raise ValueError(f'Loop {li + 1}: segment "{seg_key}" : invalid sense {sense}')
+        comp = self._segments[seg_key]['comp']
+        if comp.sign > 0:
+          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Power]\n'
+        if comp.sign < 0:
+          has_resistance = True
+          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Resist]\n'
+      if not has_resistance:
+        raise ValueError(f'Loop {li + 1}: no resistance in loop (singular energy equation)')
+    return txt + '\n'
 
   def _calcFuncs(self) -> None:
-    ''' Update the system of functions to do the final calculations.
-    '''
-    self._funcs = {'N': [], 'L': []}
-    # nodes
-    adj = self.Adjacency
-    if len(adj) == 0:
-      return
-    for key, value in adj.items():
-      equation = np.array([0.0] * len(self._segments))
-      adjsegment = self.segmentsFromAdjacency(key, value)
-      for s in adjsegment:
-        segment = self.findSegment(s)
-        if segment is None:
-          # TODO better error handling
-          raise ValueError(f'Segment {key} to {value} not found in graph')
-        equation[segment['idx']] = segment['use']
-      self._funcs['N'].append(equation)
-    # cycles
-    cycl = self.FundamentalCycles
-    if len(cycl) == 0:
-      return
-    for c in cycl:
-      equation = []
-      for s in self._segments:
-        equation.append({'s': f'({s["name"]})', 'c': flsc.Comp_Dummy(), 'd': 0.0})
-      nsegment = self.segmentsFromNodes(c)
-      if len(nsegment) == 0 :
-        # TODO better error handling
-        raise ValueError(f'Segment for cycle {c} not found in graph')
-      for s in nsegment:
-        segment = self.findSegment(s)
-        if segment is None:
-          # TODO better error handling
-          raise ValueError(f'Segment {s} not found in graph')
-        equation[segment['idx']] = {'s': s, 'c': segment['comp'], 'd': segment['use']}
-      self._funcs['L'].append(equation)
+    ''' Build B (node continuity) and C (loop energy) incidence matrices. '''
+    self._funcs = {'B': None, 'C': None}
+    # B matrix
+    nodes = list(self._nodes)
+    seg_keys = list(self._segments.keys())
+    B = np.zeros((len(nodes), len(seg_keys)))
+    for j, key in enumerate(seg_keys):
+        seg = self._segments[key]
+        B[nodes.index(seg['B']), j] = -1
+        B[nodes.index(seg['E']), j] = +1
+    self._funcs['B'] = B
+    # C matrix
+    C = np.zeros((len(self._fundamentalcycles), len(seg_keys)))
+    for i, loop in enumerate(self._fundamentalcycles):
+        for seg_key, _, _, sense in loop:
+            C[i, seg_keys.index(seg_key)] = sense
+    self._funcs['C'] = C
+    #print(self.format_BC_matrix())
 
+  #----------------------------------------------------------------------------
+  # PATH UTILITIES
+  def _sortCycle(self, cycle: list[list[tuple]]) -> list[list[tuple]]:
+    ''' Sort a cycle so it starts from the smallest node deterministically. '''
+    adj = {}
+    for comp in cycle:
+      adj.setdefault(comp[1], []).append(comp)
+    # deterministic ordering
+    for edges in adj.values():
+      edges.sort(key=lambda c: c[2])
+    # alphabetically smallest start node
+    start_node = min(adj)
+    stack = [start_node]
+    edge_stack = []
+    result = []
+    while stack:
+      node = stack[-1]
+      if node in adj and adj[node]:
+        comp = adj[node].pop(0)
+        stack.append(comp[2])
+        edge_stack.append(comp)
+      else:
+        stack.pop()
+        if edge_stack:
+          result.append(edge_stack.pop())
+    sortedlist = list(reversed(result))
+    # rotate so that smallest (start, end) edge is first
+    min_index = min(range(len(sortedlist)), key=lambda i: (sortedlist[i][1], sortedlist[i][2]))
+    return sortedlist[min_index:] + sortedlist[:min_index]
+
+  #----------------------------------------------------------------------------
+  # REPRESENTATION
   def __str__(self) -> str:
-    ''' String representation
+    ''' Return a compact string representation.
 
     Returns:
-        str: String representation
+      str: Compact network summary.
     '''
-    return self.to_string(detail=False)
+    return self.toString(detail=0)
 
-  def toString(self, detail: int=0) -> str:
-    ''' String representation. Can be in more or less detail.
+  def toString(self, detail: int = 0) -> str:
+    ''' Return a formatted multi-line network description.
 
     Args:
-        detail (int, optional): The details to be returned. Defaults to 0.
+      detail (int, optional): Include topology and matrix details when non-zero.
 
     Returns:
-        str: String representation
+      str: Formatted network text.
     '''
-    txt = f'Network'
-    txt += f'\n  Nodes:\n    {self._nodes}'
-    txt += '\n  Segments:\n    ' + '\n    '.join([str(i) for i in self._segments])
+    txt = f'Network "{self._name}"\n'
+    txt += ' Nodes:\n'
+    txt += self.nodeString()
+    txt += ' Segments:\n'
+    txt += self.segmentsString()
     if detail:
-      txt += '\n  Edges:\n    ' + '\n    '.join([str(i) for i in self.Edges])
-      txt += '\n  Adjacency:\n    ' + '\n    '.join([str(i) for i in self._adjacency.items()])
-      txt += '\n  SpanningTree:\n    ' + '\n    '.join([str(i) for i in self._spanningtree])
-      txt += '\n  FundamentalCycles:\n    ' + '\n    '.join([str(i) for i in self._fundamentalcycles])
-    txt += 'Functions:\n'
-    txt += '  N:\n'
-    for n in self._funcs['N']:
-      txt += '    ' + str(n) + '\n'
-    txt += '  L:\n'
-    for l in self._funcs['L']:
-      for i in l:
-        txt += f'    {i}\n'
-      txt += '\n'
+      txt += ' Adjacency:\n'
+      for n, a in self._adjacency.items():
+        txt += f'   {n} -> {a}\n'
+      txt += ' SpanningTree:\n'
+      for s in self._spanningtree:
+        txt += f'   {s}\n'
+      txt += ' FundamentalCycles:\n'
+      for c in self._fundamentalcycles:
+        txt += f'   {c}\n'
+      txt += ' Functions: Combined incidence matrix [B; C]:\n'
+      txt += self.functionString()
+    txt += ' Result:\n'
+    txt += self.resultString()
     return txt
 
-  def __repr__(self) -> str:
-    ''' Class representation.
+  def nodeString(self) -> str:
+    ''' Format the node list for display.
 
     Returns:
-        str: class representation
+      str: Node section text.
     '''
-    segs = [(s["B"], s["E"], s["comp"]) for s in self._segments]
-    return f'Graph({segs!r})'
+    if not self._nodes:
+      return '   <none>\n'
+    node_w = max(4, max(len(str(node)) for node in self._nodes))
+    txt = ''
+    for i, node in enumerate(self._nodes, start=1):
+      txt += f'   [{i:>2}] {str(node):<{node_w}}\n'
+    return txt
+
+  def segmentsString(self) -> str:
+    ''' Format the segment table for display.
+
+    Returns:
+      str: Segment section text.
+    '''
+    if not self._segments:
+      return '   <none>\n\n'
+    key_w = max(12, max(len(key) for key in self._segments) + 1)
+    comp_w = max(10, max(len(getattr(seg['comp'], 'name', seg['comp'].__class__.__name__)) for seg in self._segments.values()))
+    type_w = max(10, max(len(seg['comp'].__class__.__name__) for seg in self._segments.values()))
+    dir_w = max(
+      9,
+      max(
+        len(f"{seg['B']} → {seg['E']}") if seg['sense'] > 0 else len(f"({seg['B']} ← {seg['E']})")
+        for seg in self._segments.values()
+      )
+    )
+    txt = ''
+    for key, seg in self._segments.items():
+      comp = seg['comp']
+      comp_name = getattr(comp, 'name', comp.__class__.__name__)
+      comp_type = comp.__class__.__name__
+      if seg['sense'] > 0:
+        dir_txt = f"{seg['B']} → {seg['E']}"
+      else:
+        dir_txt = f"({seg['B']} ← {seg['E']})"
+      txt += (
+        f"   [{key:<{key_w}}] "
+        f"{dir_txt:<{dir_w}} : "
+        f"{comp_name:<{comp_w}} ({comp_type:<{type_w}}) "
+        f"ports: {seg['pB']} → {seg['pE']}\n"
+      )
+    return txt + "\n"
+
+  def functionString(self) -> str:
+    ''' Format incidence matrices B and C for display.
+
+    Returns:
+      str: Matrix section text.
+    '''
+    B = self._funcs.get('B')
+    C = self._funcs.get('C')
+    if B is None or C is None:
+      return 'B/C matrices not initialized\n'
+    nodes = list(self._nodes)
+    seg_keys = list(self._segments.keys())
+    if not seg_keys:
+      return 'No segments in network\n'
+    # Column width (adaptive)
+    w = max(10, max(len(k) for k in seg_keys) + 2)
+    header = '    Row \\ Seg'.ljust(12) + ' | ' + ' | '.join(f'{k:^{w}}' for k in seg_keys) + '\n'
+    sep = '    ' + '-' * len(header) + '\n'
+    txt = header + sep
+    # --- B block
+    txt += 'B  (Node continuity)\n'
+    for i, node in enumerate(nodes):
+      txt += f'    {node:<12} | ' + ' | '.join(f'{int(B[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
+    txt += sep
+    # --- C block
+    txt += 'C  (Loop energy)\n'
+    if C.shape[0] == 0:
+      txt += '    <no loops>\n'
+    else:
+      for i in range(C.shape[0]):
+        txt += f'    L{i+1:<11} | ' + ' | '.join(f'{int(C[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
+    return txt + '\n'
+
+  def resultString(self) -> str:
+    ''' Format the solved flow/head results table.
+
+    Returns:
+      str: Result section text.
+    '''
+    if not self._result:
+      return '   <empty: run calcNetwork()>\n\n'
+    seg_w = max(12, max(len(str(item['segment'])) for item in self._result) + 2)
+    nodes_w = max(
+      9,
+      max(
+        len(f"{seg['B']} → {seg['E']}") if seg['sense'] > 0 else len(f"({seg['B']} ← {seg['E']})")
+        for seg in self._segments.values()
+      )
+    )
+    comp_w = 16
+    header = (
+      '   '
+      + f"{'Segment':<{seg_w}}"
+      + ' | '
+      + f"{'Nodes':<{nodes_w}}"
+      + ' | '
+      + f"{'Component':<{comp_w}}"
+      + ' | '
+      + f"{'Q':>16}"
+      + ' | '
+      + f"{'H':>16}"
+      + '\n'
+    )
+    sep = '   ' + '-' * len(header.rstrip('\n')) + '\n'
+    txt = header + sep
+    for item in self._result:
+      seg_key = item['segment']
+      seg = self._segments.get(seg_key, {})
+      comp = seg.get('comp', None)
+      comp_name = getattr(comp, 'name', '-') if comp is not None else '-'
+      if seg:
+        if seg['sense'] > 0:
+          nodes_txt = f"{seg['B']} → {seg['E']}"
+        else:
+          nodes_txt = f"({seg['B']} ← {seg['E']})"
+      else:
+        nodes_txt = '-'
+      q_txt = f"{item['Q']:.4g~P}"
+      h_txt = f"{item['H']:.4g~P}"
+      txt += (
+        '   '
+        + f'{seg_key:<{seg_w}}'
+        + ' | '
+        + f'{nodes_txt:<{nodes_w}}'
+        + ' | '
+        + f'{comp_name:<{comp_w}}'
+        + ' | '
+        + f'{q_txt:>16}'
+        + ' | '
+        + f'{h_txt:>16}'
+        + '\n'
+      )
+    return txt + '\n'
+
+  def networkValidationtoString(self) -> str:
+    ''' Return the validation report for fundamental cycles.
+
+    Returns:
+      str: Validation report.
+    '''
+    return self._calcValidation()

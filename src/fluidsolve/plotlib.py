@@ -1,5 +1,34 @@
 '''
-This module implements a wrapper around matplotlib.
+Matplotlib wrapper utilities for engineering plots.
+
+This module provides reusable plotting infrastructure used by fluidsolve,
+including figure/grid management, axis helpers, and optional interactive
+widgets (sliders/buttons) for parameter exploration.
+
+Scope:
+
+* generic plotting primitives and containers,
+* consistent figure sizing/layout setup,
+* Tk-backed embedding and toolbar support,
+* helper integration points for higher-level domain plots.
+
+Design intent:
+
+* centralize matplotlib boilerplate in one place,
+* keep plot creation consistent across examples and tools,
+* provide a stable base for domain modules such as ``plotext``.
+
+Typical usage::
+
+  fig = PlotFigure(title='Q-H overview', nr=1, nc=1, toolbar=True)
+  ax = fig.getAxes(0, 0)
+  ax.plot([0, 1, 2], [10, 8, 4])
+  fig.show()
+
+By separating plotting infrastructure from hydraulic semantics, this module
+keeps UI/figure concerns maintainable and reusable.
+
+Reference inspiration:
 https://medium.com/@basubinayak05/python-data-visualization-day-1-71334ff5044e
 '''
 # =============================================================================
@@ -18,13 +47,29 @@ from matplotlib.widgets       import Slider, Button
 # module own
 import fluidsolve.aux_tools   as flsa
 
-#******************************************************************************
-# Helpler functions
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
-#******************************************************************************
-# PLOTFIGURE: matplotlib figure
+# =============================================================================
+# PLOTFIGURE CLASS
+# =============================================================================
 class PlotFigure:
-  '''_summary_
+  ''' Matplotlib figure container.
+
+  Args:
+    dpi (int, optional): Screen resolution (dots per inch).
+    h (int, optional): Figure height in pixels.
+    w (int, optional): Figure width in pixels.
+    hw (int, optional): Widget area height in pixels.
+    nr (int, optional): Number of graph rows.
+    nc (int, optional): Number of graph columns.
+    nrw (int, optional): Number of widget rows.
+    ncw (int, optional): Number of widget columns.
+    facecolor (str, optional): Background color.
+    title (str, optional): Figure title.
+    toolbar (bool, optional): Show the navigation toolbar.
+    extra (dict, optional): Extra kwargs passed to plt.figure.
   '''
   def __init__(self, **kwargs: int) -> None:
     args : dict = flsa.GetArgs(kwargs)
@@ -135,6 +180,7 @@ class PlotFigure:
 
   @property
   def h(self) -> int:
+    ''' Figure height in pixels. '''
     return self._h
 
   @h.setter
@@ -143,6 +189,7 @@ class PlotFigure:
 
   @property
   def w(self) -> int:
+    ''' Figure width in pixels. '''
     return self._w
 
   @w.setter
@@ -151,6 +198,7 @@ class PlotFigure:
 
   @property
   def hw(self) -> int:
+    ''' Widget area height in pixels. '''
     return self._hw
 
   @hw.setter
@@ -159,6 +207,7 @@ class PlotFigure:
 
   @property
   def nr(self) -> int:
+    ''' Number of graph rows. '''
     return self._nr
 
   @nr.setter
@@ -167,6 +216,7 @@ class PlotFigure:
 
   @property
   def nc(self) -> int:
+    ''' Number of graph columns. '''
     return self._nc
 
   @nc.setter
@@ -175,6 +225,7 @@ class PlotFigure:
 
   @property
   def nrw(self) -> int:
+    ''' Number of widget rows. '''
     return self._nrw
 
   @nrw.setter
@@ -183,6 +234,7 @@ class PlotFigure:
 
   @property
   def ncw(self) -> int:
+    ''' Number of widget columns. '''
     return self._ncw
 
   @ncw.setter
@@ -191,26 +243,32 @@ class PlotFigure:
 
   @property
   def figure(self) -> Any:
+    ''' Underlying matplotlib Figure object. '''
     return self._fig
 
   @property
   def gridspec(self) -> Any:
+    ''' Underlying GridSpec object. '''
     return self._gs
 
   @property
   def figure_widgets(self) -> Any:
+    ''' Matplotlib Figure used for widget controls. '''
     return self._figwidgets
 
   @property
   def gridspec_widgets(self) -> Any:
+    ''' GridSpec used for widget controls. '''
     return self._gswidgets
 
   @property
   def buttons(self) -> dict:
+    ''' List of registered PlotButton objects. '''
     return self._buttons
 
   @property
   def sliders(self) -> dict:
+    ''' List of registered PlotSlider objects. '''
     return self._sliders
 
   def setExtra(self, key: str, **kwargs: int) -> None:
@@ -229,44 +287,43 @@ class PlotFigure:
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
   def addGraph(self, graph: 'PlotGraph') -> int:
-    '''_summary_
+    ''' Register a graph and return its index.
 
     Args:
-        graph (PlotGraph): _description_
+      graph (PlotGraph): Graph to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered graph.
     '''
     self._graphs.append(graph)
     return len(self._graphs) - 1
 
   def addButton(self, button: 'PlotButton') -> int:
-    '''_summary_
+    ''' Register a button and return its index.
 
     Args:
-        button (PlotButton): _description_
+      button (PlotButton): Button to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered button.
     '''
     self._buttons.append(button)
     return len(self._buttons) - 1
 
   def addSlider(self, slider: 'PlotSlider') -> int:
-    '''_summary_
+    ''' Register a slider and return its index.
 
     Args:
-        slider (PlotSlider): _description_
+      slider (PlotSlider): Slider to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered slider.
     '''
     self._sliders.append(slider)
     return len(self._sliders) - 1
 
   def prepareShow(self) -> None:
-    '''_summary_
-    '''
+    ''' Build the figure, graphs, and widget areas. '''
     if self._prepare:
       args = flsa.prepareArgs(
         figsize             = (self._w / self._dpi, self._h / self._dpi),
@@ -298,9 +355,8 @@ class PlotFigure:
     self._prepare = False
 
   def show(self) -> None:
-    ''' Show the figure; This is the main routine building the complete drawing.
-    '''
-    def onClose():
+    ''' Build and display the figure in a Tkinter window. '''
+    def onClose() -> Any:
       print('Closing plot window.')
       root.quit()
       root.destroy()
@@ -337,13 +393,21 @@ class PlotFigure:
       g.updateData()
     self._fig.canvas.draw_idle()
 
-#******************************************************************************
-# PLOTGRAPH: matplotlib axes
+# =============================================================================
+# PLOTGRAPH CLASS
+# =============================================================================
 class PlotGraph:
-  '''_summary_
+  ''' Matplotlib axes container.
 
   Args:
-      figure (PlotFigure): _description_
+    figure (PlotFigure): Parent figure.
+    r (int | str): Row index or slice in the GridSpec.
+    c (int | str): Column index or slice in the GridSpec.
+    polar (bool, optional): Use polar projection.
+    title (str, optional): Axes title.
+    facecolor (str, optional): Axes background color.
+    edgecolor (str, optional): Axes edge color.
+    extra (dict, optional): Extra kwargs passed to add_subplot.
   '''
   def __init__(self, figure: PlotFigure, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
@@ -423,6 +487,7 @@ class PlotGraph:
 
   @property
   def axes(self) -> Any:
+    ''' Underlying matplotlib Axes object. '''
     return self._ax
 
   def setExtra(self, key: str, **kwargs: int) -> None:
@@ -440,99 +505,94 @@ class PlotGraph:
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
-  def setXAxis(self, **kwargs) -> None:
-    '''_summary_
-    '''
+  def setXAxis(self, **kwargs: Any) -> None:
+    ''' Configure the primary X axis. '''
     if not kwargs:
       self._xaxis = None
     else:
       kwargs['type'] = 'x1'
       self._xaxis = PlotAxis(self, **kwargs)
 
-  def setYAxis(self, **kwargs):
-    '''_summary_
-    '''
+  def setYAxis(self, **kwargs: Any) -> Any:
+    ''' Configure the primary Y axis. '''
     if not kwargs:
       self._yaxis = None
     else:
       kwargs['type'] = 'y1'
       self._yaxis = PlotAxis(self, **kwargs)
 
-  def setXAxis2(self, **kwargs):
-    '''_summary_
-    '''
+  def setXAxis2(self, **kwargs: Any) -> Any:
+    ''' Configure the secondary X axis. '''
     if not kwargs:
       self._xaxis2 = None
     else:
       kwargs['type'] = 'x2'
       self._xaxis2 = PlotAxis(self, **kwargs)
 
-  def setYAxis2(self, **kwargs):
-    '''_summary_
-    '''
+  def setYAxis2(self, **kwargs: Any) -> Any:
+    ''' Configure the secondary Y axis. '''
     if not kwargs:
       self._yaxis2 = None
     else:
       kwargs['type'] = 'y2'
       self._yaxis2 = PlotAxis(self, **kwargs)
 
-  def setGrid(self, **kwargs):
-    '''_summary_
-    '''
+  def setGrid(self, **kwargs: Any) -> Any:
+    ''' Configure the grid. '''
     if not kwargs:
       self._grid = None
     else:
       self._grid = PlotGrid(self, **kwargs)
 
-  def setLegend(self, **kwargs):
+  def setLegend(self, **kwargs: Any) -> Any:
     '''_summary_
     '''
     pass
 
   def addCurve(self, curve: 'PlotCurve') -> int:
-    '''_summary_
+    ''' Register a curve and return its index.
 
     Args:
-        curve (PlotCurve): _description_
+      curve (PlotCurve): Curve to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered curve.
     '''
     self._curves.append(curve)
     return len(self._curves) - 1
 
   def addVline(self, line: 'PlotLine') -> int:
-    '''_summary_
+    ''' Register a vertical line and return its index.
 
     Args:
-        line (PlotLine): _description_
+      line (PlotLine): Line to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered line.
     '''
     self._vlines.append(line)
     return len(self._vlines) - 1
 
   def addHline(self, line: 'PlotLine') -> int:
-    '''_summary_
+    ''' Register a horizontal line and return its index.
 
     Args:
-        line (PlotLine): _description_
+      line (PlotLine): Line to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered line.
     '''
     self._hlines.append(line)
     return len(self._hlines) - 1
 
   def addAnnotation(self, annotation: 'PlotAnnotation') -> int:
-    '''_summary_
+    ''' Register an annotation and return its index.
 
     Args:
-        annotation (PlotAnnotation): _description_
+      annotation (PlotAnnotation): Annotation to register.
 
     Returns:
-        int: _description_
+      int: Index of the registered annotation.
     '''
     self._annotations.append(annotation)
     return len(self._annotations) - 1
@@ -585,13 +645,23 @@ class PlotGraph:
     for a in self._annotations:
       a.updateData()
 
-#******************************************************************************
-# PLOTCURVE: matplotlib data plot
+# =============================================================================
+# PLOTCURVE CLASS
+# =============================================================================
 class PlotCurve:
-  '''_summary_
+  ''' A single data series on a PlotGraph.
 
   Args:
-      graph (PlotGraph): _description_
+    graph (PlotGraph): Parent graph.
+    type (str, optional): Plot type; one of ``line``, ``scatter``, or ``bar``.
+    x (list, optional): X data.
+    y (list, optional): Y data.
+    label (str, optional): Legend label.
+    color (str, optional): Line or marker color.
+    alpha (float, optional): Opacity.
+    linestyle (str, optional): Line style.
+    marker (str, optional): Marker style.
+    extra (dict, optional): Extra kwargs passed to the plot call.
   '''
   def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
     args : dict = flsa.GetArgs(kwargs)
@@ -676,7 +746,7 @@ class PlotCurve:
     return self._x
 
   @x.setter
-  def x(self, value:list):
+  def x(self, value:list) -> Any:
     ''' set x data.
 
     Args:
@@ -694,7 +764,7 @@ class PlotCurve:
     return self._y
 
   @y.setter
-  def y(self, value:list):
+  def y(self, value:list) -> Any:
     ''' set y data.
 
     Args:
@@ -769,13 +839,23 @@ class PlotCurve:
       curve.set_ydata(self._y)
 
 
-#******************************************************************************
-# PLOTLINE: matplotlib horizontal and vertical lines
+# =============================================================================
+# PLOTLINE CLASS
+# =============================================================================
 class PlotLine:
-  '''_summary_
+  ''' Horizontal or vertical reference line on a PlotGraph.
 
   Args:
-      graph (PlotGraph): _description_
+    graph (PlotGraph): Parent graph.
+    typev (bool): True for vertical, False for horizontal.
+    v (float, optional): Position of the line.
+    x (float, optional): Relative start position (0–1).
+    y (float, optional): Relative end position (0–1).
+    label (str, optional): Legend label.
+    color (str, optional): Line color.
+    alpha (float, optional): Opacity.
+    linestyle (str, optional): Line style.
+    extra (dict, optional): Extra kwargs for the line call.
   '''
   def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
     args : dict = flsa.GetArgs(kwargs)
@@ -876,32 +956,27 @@ class PlotLine:
     #Axes.axvline(y=0, xmin=0, xmax=1, **kwargs)
     pass
 
-#******************************************************************************
-# PLOTAXIS: helpler class for matplotlib axis
+# =============================================================================
+# PLOTAXIS CLASS
+# =============================================================================
 class PlotAxis:
-  '''Configures axis properties.
+  ''' Configures axis properties on a PlotGraph.
 
-    Args:
-      graph (PlotGraph): The parent graph object to which the axis belongs.
-      **kwargs (int): Keyword arguments specifying axis configuration options.
-        Supported keys include:
-          - type (str): Type of axis ('x1', 'y1', 'x2', 'y2'). Default is None.
-                        Is set by the PlotGraph class method
-          - share (object): Axis to share values with (e.g., another axis). Default is None.
-          - auto (bool): Whether to automatically determine axis limits. Default is True.
-          - vmin (int | float): Minimum value of the axis. Default is None.
-          - vmax (int | float): Maximum value of the axis. Default is None.
-          - vstep (int | float): Step size between major ticks. Default is None.
-          - vmstep (int | float): Step size between minor ticks. Default is None.
-          - axison (bool): Whether the axis is visible. Default is True.
-          - axiscolor (str): Color of the axis line. Default is None.
-          - gridon (bool): Whether the grid is visible. Default is True.
-          - gridcolor (str): Color of the grid lines. Default is None.
-          - labeltxt (str): Label text for the axis. Default is None.
-          - labelcolor (str): Color of the axis label. Default is None.
-          - labelfmt (str): Format string for axis labels. Default is None.
-          - extra (dict): Additional configuration options. Default is an empty dict.
-
+  Args:
+    graph (PlotGraph): Parent graph.
+    type (str): Axis type: ``x1``, ``y1``, ``x2``, or ``y2``. Set by PlotGraph.
+    share (object, optional): Axis to share scale with.
+    auto (bool, optional): Use automatic axis limits.
+    vmin (int | float, optional): Minimum axis value.
+    vmax (int | float, optional): Maximum axis value.
+    vstep (int | float, optional): Major tick step.
+    vmstep (int | float, optional): Minor tick step.
+    axison (bool, optional): Whether the axis is visible.
+    axiscolor (str, optional): Axis line color.
+    labeltxt (str, optional): Axis label text.
+    labelcolor (str, optional): Axis label color.
+    labelfmt (str, optional): Tick label format string.
+    extra (dict, optional): Extra kwargs for axis configuration.
   '''
   def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
@@ -1061,15 +1136,29 @@ class PlotAxis:
       ######################## TODO
       pass
 
-#******************************************************************************
-# PLOTANNOTATION: matplotlib annotation
+# =============================================================================
+# PLOTANNOTATION CLASS
+# =============================================================================
 class PlotAnnotation:
-  '''Configures annotation properties.
+  ''' Configures annotation properties on a PlotGraph.
 
-    Args:
-      graph (PlotGraph): The parent graph object to which the annotation belongs.
-      **kwargs (int): Keyword arguments specifying annotation configuration options.
-        Supported keys include:
+  Args:
+    graph (PlotGraph): Parent graph.
+    label (list, optional): Annotation text labels.
+    x (list, optional): X positions.
+    y (list, optional): Y positions.
+    textcoords (str, optional): Coordinate system for text offset.
+    xoffset (int | float, optional): Horizontal text offset.
+    yoffset (int | float, optional): Vertical text offset.
+    xtoggle (int | float, optional): Alternating horizontal shift.
+    ytoggle (int | float, optional): Alternating vertical shift.
+    fontsize (int, optional): Text font size.
+    color (str, optional): Text color.
+    bbox (dict, optional): Bounding box properties.
+    arrow (dict, optional): Arrow properties.
+    halignment (str, optional): Horizontal alignment.
+    valignment (str, optional): Vertical alignment.
+    extra (dict, optional): Extra kwargs passed to annotate.
   '''
   def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
     args : dict = flsa.GetArgs(kwargs)
@@ -1195,7 +1284,7 @@ class PlotAnnotation:
     return self._x
 
   @x.setter
-  def x(self, value:list):
+  def x(self, value:list) -> Any:
     ''' set x data.
 
     Args:
@@ -1213,7 +1302,7 @@ class PlotAnnotation:
     return self._y
 
   @y.setter
-  def y(self, value:list):
+  def y(self, value:list) -> Any:
     ''' set y data.
 
     Args:
@@ -1231,7 +1320,7 @@ class PlotAnnotation:
     return self._label
 
   @label.setter
-  def label(self, value:list):
+  def label(self, value:list) -> Any:
     ''' set label data.
 
     Args:
@@ -1286,30 +1375,29 @@ class PlotAnnotation:
         toggle = -toggle
 
   def update(self) -> None:
-    ''' Update the annotation; This is called by PlotGraph.show().
-        Because annotations are erased and redraw, update and updateData are the same.
-    '''
+    ''' Update the annotation by removing and redrawing it. '''
     self.updateData()
 
   def updateData(self) -> None:
-    ''' Update the annotation data; This is called by PlotGraph.show().
-    '''
+    ''' Remove and redraw all annotations with current data. '''
     for a in self._annotations:
       a.remove()
     self._annotations = []
     self.show()
 
-#******************************************************************************
-# PLOTGRID: helpler class for matplotlib grid
+# =============================================================================
+# PLOTGRID CLASS
+# =============================================================================
 class PlotGrid:
-  '''Configures grid properties.
+  ''' Configures grid properties on a PlotGraph.
 
-    Args:
-      graph (PlotGraph): The parent graph object to which the axis belongs.
-      **kwargs (int): Keyword arguments specifying axis configuration options.
-        Supported keys include:
-          - extra (dict): Additional configuration options. Default is an empty dict.
-
+  Args:
+    graph (PlotGraph): Parent graph.
+    axis (str, optional): Which axis to apply the grid to: ``x``, ``y``, or ``both``.
+    color (str, optional): Grid line color.
+    linestyle (str, optional): Grid line style.
+    linewidth (int | float, optional): Grid line width.
+    extra (dict, optional): Extra kwargs passed to ax.grid.
   '''
   def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
@@ -1380,13 +1468,21 @@ class PlotGrid:
     ) | self._extra['main']
     ax.grid(**args)
 
-#******************************************************************************
-# PLOTBUTTON: helpler class for matplotlib button
+# =============================================================================
+# PLOTBUTTON CLASS
+# =============================================================================
 class PlotButton:
-  '''_summary_
+  ''' Matplotlib button widget.
 
   Args:
-      fig (PlotFigure): _description_
+    fig (PlotFigure): Parent figure.
+    r (int | str): Row index or slice in the widget GridSpec.
+    c (int | str): Column index or slice in the widget GridSpec.
+    label (str, optional): Button label text.
+    color (str, optional): Button background color.
+    hovercolor (str, optional): Button hover color.
+    fun (Callable): Callback executed when the button is clicked.
+    extra (dict, optional): Extra kwargs passed to the Button constructor.
   '''
   def __init__(self, fig: PlotFigure, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
@@ -1427,7 +1523,7 @@ class PlotButton:
       ]
     )
     self._hovercolor: str = args.getArg(
-      'hoovercolor',
+      'hovercolor',
       [
         flsa.vFun.default(None),
         flsa.vFun.istype(str, need=False),
@@ -1488,13 +1584,25 @@ class PlotButton:
     self._widget.on_clicked(self._fun)
     #print('BUTTON show: ', self.__dict__)
 
-#******************************************************************************
-# PLOTSLIDER: helpler class for matplotlib slider
+# =============================================================================
+# PLOTSLIDER CLASS
+# =============================================================================
 class PlotSlider:
-  '''_summary_
+  ''' Matplotlib slider widget.
 
   Args:
-      fig (PlotFigure): _description_
+    fig (PlotFigure): Parent figure.
+    r (int | str): Row index or slice in the widget GridSpec.
+    c (int | str): Column index or slice in the widget GridSpec.
+    label (str, optional): Slider label text.
+    color (str, optional): Slider color.
+    hovercolor (str, optional): Slider hover color.
+    vmin (int | float): Minimum slider value.
+    vmax (int | float): Maximum slider value.
+    vstep (int | float, optional): Slider step size.
+    vinit (int | float, optional): Initial slider value.
+    fun (Callable): Callback executed on slider change.
+    extra (dict, optional): Extra kwargs passed to the Slider constructor.
   '''
   def __init__(self, fig: PlotFigure, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
@@ -1535,7 +1643,7 @@ class PlotSlider:
       ]
     )
     self._hovercolor: str = args.getArg(
-      'hoovercolor',
+      'hovercolor',
       [
         flsa.vFun.default(None),
         flsa.vFun.istype(str, need=False),

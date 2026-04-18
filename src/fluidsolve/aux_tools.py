@@ -1,6 +1,38 @@
 '''
-https://github.com/MoserMichael/kwchecker/tree/master
+Utility helpers for argument handling, unit conversion, and validators.
 
+This module provides small building blocks used throughout fluidsolve for
+consistent argument parsing and validation.
+
+Main parts:
+
+* Unit helpers:
+  ``toUnits`` converts numeric values and quantities to a requested unit.
+* Argument helpers:
+  ``prepareArgs`` removes ``None`` values from keyword dictionaries and
+  ``spec`` builds readable component specification dictionaries.
+* Argument processor:
+  ``GetArgs`` provides structured extraction/consumption of keyword
+  arguments with validation chains.
+* Validator factory:
+  ``vFun`` contains static methods that return validator/transformer
+  callables for ``GetArgs.getArg``.
+
+Typical usage pattern:
+
+1. Wrap incoming kwargs with ``GetArgs``.
+2. Retrieve each expected argument through ``getArg`` and a list of
+   validators (defaults, type checks, conversions).
+3. Call ``isEmpty`` to ensure no unexpected arguments are left.
+
+Example::
+
+  args = GetArgs(kwargs)
+  name = args.getArg('name', [vFun.default(''), vFun.istype(str)])
+  roughness = args.getArg('e', [vFun.default(15), vFun.tounits(u.um)])
+  args.isEmpty()
+    
+This approach keeps component constructors compact, explicit, and uniform.
 '''
 # =============================================================================
 # IMPORTS
@@ -10,7 +42,7 @@ import types
 import os
 import re
 import textwrap
-# direct imports from pint and not from the medium module to avoid circular refs
+# Import directly from pint (not via medium) to avoid circular imports.
 from pint     import _DEFAULT_REGISTRY as u
 from pint     import Quantity
 
@@ -18,15 +50,15 @@ from pint     import Quantity
 # SOME HELPER FUNCTIONS
 # =============================================================================
 def toUnits(value: int | float | Quantity, units: Quantity, magnitude: bool=False) -> Quantity:
-  ''' Convert a value or Quantitiy to a Quantity in specific units.
+  ''' Convert a value to a Quantity in the requested units.
 
   Args:
     value (int | float | Quantity): The input value.
     units (Quantity): The Quantity units to convert to.
-    magnitude (bool, optional): If True, only the magnitude is returned. Defaults to False.
+    magnitude (bool, optional): If True, only the magnitude is returned.
 
   Returns:
-    Quantity: The Quantity in thr asked units.
+    Quantity: Value converted to the requested units.
   '''
   if value is None:
     raise ValueError('Value is None.')
@@ -40,13 +72,11 @@ def toUnits(value: int | float | Quantity, units: Quantity, magnitude: bool=Fals
   return value
 
 def prepareArgs(**kwargs: int) -> dict:
-  ''' Prepare a dict with key-value pairs from the entered kwargs.
-      If the value is None, then the key-value pair is omitted.
-      This enables the function or method where this arguments are passed to,
-      to take a default value when no argument wat provided.
+  ''' Build an argument dict from kwargs, skipping None values.
+      This lets downstream functions use their own defaults when an argument was not provided.
 
   Returns:
-      dict: the argument dict.
+    dict: Filtered argument dictionary.
   '''
   args = {}
   for key, value in kwargs.items():
@@ -55,7 +85,7 @@ def prepareArgs(**kwargs: int) -> dict:
   return args
 
 def getPumpCurveDataText(data_in: str) -> list:
-  ''' Get Q-H data from a pump curve.
+  ''' Parse Q-H data copied from a pump curve digitizer.
       Use eg. https://plotdigitizer.com/app
       or https://web.eecs.utk.edu/~dcostine/personal/PowerDeviceLib/DigiTest/index.html
       or similar
@@ -64,7 +94,7 @@ def getPumpCurveDataText(data_in: str) -> list:
     data_in (str): The input data from the pump curve.
 
   Returns:
-    list: List of floats.
+    list: Parsed numeric values.
   '''
   data = textwrap.dedent(data_in)
   if len(data) > 0 :
@@ -74,44 +104,57 @@ def getPumpCurveDataText(data_in: str) -> list:
     return []
 
 # =============================================================================
+# HELPER FUNCTION FOR DEFS
+# =============================================================================
+def spec(**kwargs: Any) -> Any:
+  ''' Helper to define a component specification entry.
+
+  Example:
+    spec(comp='Tube', nodes=['A', 'B'], sense=-1, D=50)
+  '''
+  return kwargs
+
+# =============================================================================
 # KWARGS VALIDATION - PROCESSING
 # =============================================================================
 class GetArgs ():
-  ''' Class to process a dict with arguments
+  ''' Process and validate an argument dictionary.
 
   Args:
-    args_in (dict, optional): The dict with arguments as key-value pairs.
+    args_in (dict, optional): Input key-value pairs.
 
   Raises:
-    TypeError: If args_in is not a dict.
+    TypeError: Raised when args_in is not a dict.
 
   Returns:
-    None.
+    None
   '''
 
-  def __init__(self, args_in: dict={}) -> None:
+  def __init__(self, args_in: dict | None=None) -> None:
+    if args_in is None:
+      args_in = {}
     if not isinstance(args_in, dict):
       raise TypeError(f'Error: The arguments input {args_in} is not a dict')
     self._args = args_in
 
-  def getArg (self, name: str, validators: list=[], remove=True) -> Any:
+  def getArg (self, name: str, validators: list=[], remove: Any=True) -> Any:
     ''' Get an argument value based on the key from an argument dict or kwargs dict.
         A list of validator functions (see class vFun) can be added to validate or to modify the passed argument.
         Then this item is removed from the list of arguments (thus making it possible to check if every argument is used just once).
 
     Args:
-      name (str): The key of the argument in the argument list
-      validators (list, optional): The list with validator functions. Defaults to [].
-      remove (bool, optional): Has the argument to be remover from the list or not. Defaults to True.
+      name (str): Key of the argument in the internal argument dict.
+      validators (list, optional): The list with validator functions.
+      remove (bool, optional): Remove the argument after processing.
 
     Raises:
       TypeError: Name has to be a string
       TypeError: Validators has to be a list
-      ValueError: Name has not been found as key in the input arguments
+      ValueError: Name is not found in the input arguments
       TypeError: A validator is not a function
 
     Returns:
-      Any: The validated or processed argument
+      Any: Validated or transformed argument value.
     '''
     #print('---------- validator')
     #print('args_in:', self._args)
@@ -143,12 +186,12 @@ class GetArgs ():
     return value_in
 
   def addArg (self, key: str, value: Any) -> None:
-    ''' Add extra arguments to the existing dict.
-        Overwrite if already there.
+    ''' Add one argument to the internal dictionary.
+        Overwrites the value if the key already exists.
 
     Args:
-      key (str): the key of the argumetn to add.
-      value (value): the value of the argumetn to add.
+      key (str): Key of the argument to add.
+      value (Any): Value of the argument to add.
 
     Returns:
       None
@@ -160,7 +203,7 @@ class GetArgs ():
         Can be used to set some default values.
 
     Args:
-      extra_args (dict, optional): the dict with default argument key - value pairs. Defaults to {}.
+      extra_args (dict, optional): Default key-value pairs.
 
     Returns:
       None
@@ -170,26 +213,25 @@ class GetArgs ():
         self._args[key] = value
 
   def restArgs (self) -> dict:
-    ''' return a dict with the arguments still in the dict (not deleted by getArg).
+    ''' Return the remaining, unprocessed arguments.
 
     Returns:
-        dict: The rest of the arguments (to be processed).
+        dict: Remaining arguments.
     '''
     return self._args
 
   def isEmpty (self, raiseerror: bool=True) -> bool:
-    ''' Returns False or raises an error if the argument list is not empty.
-        Can be used to check if all arguments are processed.
-        Probably not needed, but this can detect some errors if there are typos in the passed arguments.
+    ''' Check whether all arguments have been processed.
+        Raises or reports that arguments are still left.
 
     Args:
-      raiseerror (bool, optional): Raise an error or not.
+      raiseerror (bool, optional): Raise an error when arguments remain.
 
     Raises:
-      TypeError: Still some arguments left.
+      TypeError: Raised when arguments are left and raiseerror is True.
 
     Returns:
-      bool: Still some arguments left (False) or not (True).
+      bool: True when empty, False when arguments remain.
 
     '''
     if not len(self._args) == 0:
@@ -200,13 +242,13 @@ class GetArgs ():
       return False
 
 class vFun (): # pylint: disable=invalid-name
-  ''' Class with static methods to be used as validators in the GetArgs class above.
-      There are sanitizers, modifiers and validation checks.
+  ''' Static validator helpers for use with GetArgs.
+      Includes sanitizers, converters, and validation checks.
 
       Every static method returns a function (Callable) with 2 arguments:
       The first one is the name for the argument (used for eventual error generation).
       The second one is the argument to be validated itself.
-      The validators themselves alwaus have to return the (modified) argument.
+      Validators always return the (possibly modified) argument.
 
   '''
   # - - - - - - - - - - - - - - - - - - - -
@@ -221,7 +263,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _default(_argname, argvalue) -> Any:
+    def _default(_argname: Any, argvalue: Any) -> Any:
       if argvalue is None:
         return default
       else:
@@ -239,7 +281,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _totype(_argname, argvalue) -> Any:
+    def _totype(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not isinstance(argvalue, type_type):
@@ -257,7 +299,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., str]: The validator function.
     '''
-    def _strip(_argname, argvalue) -> str:
+    def _strip(_argname: Any, argvalue: Any) -> str:
       if not need and argvalue is None:
         return None
       return str(argvalue).strip()
@@ -265,7 +307,7 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def tolower(need: bool=True) -> Callable[..., str]:
-    ''' Set the argumetn to lower case.
+    ''' Set the argument to lower case.
 
     Args:
       need (bool, optional): if False, this argument can also be None
@@ -273,7 +315,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., str]: The validator function.
     '''
-    def _tolower(_argname, argvalue) -> str:
+    def _tolower(_argname: Any, argvalue: Any) -> str:
       if not need and argvalue is None:
         return None
       return str(argvalue).lower()
@@ -281,7 +323,7 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def toupper(need: bool=True) -> Callable[..., str]:
-    ''' set the argument to upper case.
+    ''' Set the argument to upper case.
 
     Args:
       need (bool, optional): if False, this argument can also be None
@@ -289,7 +331,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., str]: The validator function.
     '''
-    def _toupper(_argname, argvalue) -> str:
+    def _toupper(_argname: Any, argvalue: Any) -> str:
       if not need and argvalue is None:
         return None
       return str(argvalue).upper()
@@ -297,18 +339,18 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def tounits(units: Any, magnitude: bool=False, need: bool=True) -> Callable[..., Any | Quantity]:
-    '''  Set the argument value or Quantity to a Quantity with the desired units.
-         As an option, onlu the magnitede is returned
+    ''' Convert the argument to a Quantity with desired units.
+        Optionally, only the magnitude is returned.
 
     Args:
       units (Any): The desired units.
-      magnitude (bool, optional): if True, the values is converted or interpreted with the desired units, and then only the magnitude is returned
+      magnitude (bool, optional): If True, return only the magnitude.
       need (bool, optional): if False, this argument can also be None
 
     Returns:
       Callable[..., Any | Quantity]: The validator function.
     '''
-    def _tounits(_argname, argvalue) -> Any | Quantity:
+    def _tounits(_argname: Any, argvalue: Any) -> Any | Quantity:
       if not need and argvalue is None:
         return None
       if argvalue is None:
@@ -332,7 +374,7 @@ class vFun (): # pylint: disable=invalid-name
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _sanitizefilepath(_argname, argvalue) -> Any:
+    def _sanitizefilepath(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       return os.path.normpath(argvalue)
@@ -340,18 +382,18 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def tolambda(fun: Any, need: bool=True) -> Callable[..., Any]:
-    ''' Execute a lambda function.
+    ''' Execute a transformation function.
         Eg. vFun.tolambda(lambda x: x.to(u.m) if isinstance(x, Quantity) else x * u.m)
             vFun.tolambda(lambda x: x if isinstance(x, flsm.Medium) else flsm.Medium(prd=x))
 
     Args:
-      fun (Any): The lamba function to be executed.
+      fun (Any): The callable transformation.
       need (bool, optional): if False, this argument can also be None
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _lambda(_argname, argvalue) -> Any:
+    def _lambda(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       return fun(argvalue)
@@ -360,13 +402,13 @@ class vFun (): # pylint: disable=invalid-name
   # - - - - - - - - - - - - - - - - - - - -
   # Validators
   @staticmethod
-  def istype(*type_type, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    ''' Check if the argument is of a type or list or tuple of types.
+  def istype(*type_type: Any, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
+    ''' Check whether the argument matches one or more allowed types.
 
     Args:
-      type_type (list | tuple | Any): The type or list of types allowed.
+      type_type (list | tuple | Any): Allowed type(s).
       need (bool, optional): if False, this argument can also be None
-      errmsg (Str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
@@ -376,11 +418,10 @@ class vFun (): # pylint: disable=invalid-name
     else:
       t_type = type_type
 
-    def _istype(argname, argvalue) -> Any:
+    def _istype(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not isinstance(argvalue, t_type):
-        print(type(argvalue))
         if errmsg is not None:
           raise ValueError(errmsg)
         raise ValueError(f'Error: argument {argname} not of type {t_type}')
@@ -389,15 +430,15 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def notnone(errmsg: str=None) -> Callable[..., Any]:
-    ''' Check if the argument is not None.
+    ''' Check that the argument is not None.
 
     Args:
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _notempty(argname, argvalue) -> Any:
+    def _notempty(argname: Any, argvalue: Any) -> Any:
       if argvalue is None:
         if errmsg is not None:
           raise ValueError(errmsg)
@@ -407,15 +448,15 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def notempty(errmsg: str=None) -> Callable[..., Any]:
-    ''' Check if the argument is not Empty / False / ...
+    ''' Check that the argument is not empty.
 
     Args:
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _notempty(argname, argvalue) -> Any:
+    def _notempty(argname: Any, argvalue: Any) -> Any:
       if len(argvalue) == 0:
         if errmsg is not None:
           raise ValueError(errmsg)
@@ -425,17 +466,17 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def haslen(length: int, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    '''  Check if the length of the argument is equal to.
+    ''' Check that the argument length equals the expected length.
 
     Args:
       length (int): Desired length.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
        Callable[..., Any]: The validator function.
     '''
-    def _haslen(argname, argvalue) -> Any:
+    def _haslen(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if len(argvalue) != length:
@@ -447,17 +488,17 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def lenmax(max_length: int, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    '''  Check if the length of the argument is below a max.
+    ''' Check that the argument length does not exceed a maximum.
 
     Args:
       max_length (int): Max length.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
        Callable[..., Any]: The validator function.
     '''
-    def _lenmax(argname, argvalue) -> Any:
+    def _lenmax(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if len(argvalue) > max_length:
@@ -469,17 +510,17 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def lenmin(min_length: int, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    '''  Check if the length of the argument is above a min.
+    ''' Check that the argument length is at least a minimum.
 
     Args:
       min_length (int): Min length.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def _lenmin(argname, argvalue) -> Any:
+    def _lenmin(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if len(argvalue) < min_length:
@@ -496,14 +537,14 @@ class vFun (): # pylint: disable=invalid-name
     Args:
       low (int | float): Min value
       high (int | float): Max value
-      inv (bool, optional): If True value must be in range, if False it must be out of the range. Defaults to False.
+      inv (bool, optional): If True value must be in range, if False it must be out of the range.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., None]: The validator function.
     '''
-    def _inrange(argname, argvalue) -> Any:
+    def _inrange(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not inv:
@@ -520,16 +561,16 @@ class vFun (): # pylint: disable=invalid-name
     return _inrange
 
   @staticmethod
-  def inlist(*items, inv: bool=False, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    ''' Check if a value is contained in a list or not (if inv=True).
+  def inlist(*items: Any, inv: bool=False, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
+    ''' Check whether a value is contained in a list (or excluded if inv=True).
         This function accepts either a single list or tuple, or multiple individual arguments.
         If the condition fails and `errmsg` is provided, a ValueError is raised.
 
     Args:
-      items (list | tuple | Any): The list with alowed (or disalowed values).
-      inv (bool, optional):  False if the list contains the alowed values, True if it contains the disalowed values. Defaults to False.
+      items (list | tuple | Any): Allowed (or disallowed) values.
+      inv (bool, optional): False to allow listed values, True to forbid them.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
@@ -557,7 +598,7 @@ class vFun (): # pylint: disable=invalid-name
       lst = items
     string_list_error = ','.join(lst)
 
-    def _inlist(argname, argvalue) -> Any:
+    def _inlist(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not inv:
@@ -576,13 +617,13 @@ class vFun (): # pylint: disable=invalid-name
 
   @staticmethod
   def regex(expr: str, inv: bool=False, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
-    ''' Check if the argument matches a regex or not.
+    ''' Check whether the argument matches a regex rule.
 
     Args:
       expr (str): The regex expression.
-      inv (bool, optional): If True, the regex must apply, if False: the regex may not apply. Defaults to False.
+      inv (bool, optional): If True, the regex must apply, if False: the regex may not apply.
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
@@ -596,7 +637,7 @@ class vFun (): # pylint: disable=invalid-name
     except re.error as re_error:
       raise ValueError(f'Error: validator {expr} is not a valid regex: ' + str(re_error)) # pylint: disable=raise-missing-from
 
-    def _regex(argname, argvalue) -> Any:
+    def _regex(argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if inv:
@@ -618,12 +659,12 @@ class vFun (): # pylint: disable=invalid-name
 
     Args:
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def validate(_argname, argvalue) -> Any:
+    def validate(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not os.path.exists(argvalue):
@@ -639,12 +680,12 @@ class vFun (): # pylint: disable=invalid-name
 
     Args:
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def validate(_argname, argvalue) -> Any:
+    def validate(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not os.path.exists(str(argvalue)):
@@ -662,12 +703,12 @@ class vFun (): # pylint: disable=invalid-name
 
     Args:
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def validate(_argname, argvalue) -> Any:
+    def validate(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not os.path.exists(str(argvalue)):
@@ -685,12 +726,12 @@ class vFun (): # pylint: disable=invalid-name
 
     Args:
       need (bool, optional): if False, this argument can also be None
-      errmsg (str, optional): The eventual error message. Defaults to None.
+      errmsg (str, optional): The eventual error message.
 
     Returns:
       Callable[..., Any]: The validator function.
     '''
-    def validate(_argname, argvalue) -> Any:
+    def validate(_argname: Any, argvalue: Any) -> Any:
       if not need and argvalue is None:
         return None
       if not os.path.exists(str(argvalue)):

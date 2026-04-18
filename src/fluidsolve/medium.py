@@ -1,9 +1,40 @@
 '''
-This module implements basic medium properties.
-It is based on the thermo module assosiated with fluids
-https://thermo.readthedocs.io/thermo.chemical.html
+Fluid medium properties and shared unit infrastructure.
 
+This module defines the unit registry used across fluidsolve and provides the
+``Medium`` class, which encapsulates fluid-state properties required by
+component and network calculations.
+
+External dependencies:
+
+* ``pint`` for unit-safe quantities,
+* ``thermo`` for fluid property lookup from product names.
+
+Main capabilities:
+
+* expose shared unit aliases (``unitRegistry``, ``u``, ``Quantity``),
+* define reference constants at normal conditions,
+* create media from known thermo products,
+* support user-defined media by overriding key properties (rho, mu, k).
+
+Why this module is central:
+
+Most hydraulic equations in the package convert between pressure, head,
+velocity, and flow, all of which depend on medium properties and unit
+consistency. This module provides that common foundation.
+
+Typical usage::
+
+  water = Medium(prd='water')
+  custom = Medium(name='custom_mix', rho=950 * u.kg / u.m**3, mu=1.5e-3 * u.Pa * u.s)
+  rho = water.rho
+
+References:
+
+* https://thermo.readthedocs.io/thermo.chemical.html
+* https://pint.readthedocs.io/en/stable/
 '''
+from typing import Any
 # =============================================================================
 # IMPORTS
 # =============================================================================
@@ -14,57 +45,52 @@ from thermo.chemical        import Chemical
 # module own
 import fluidsolve.aux_tools as flsa
 # =============================================================================
-# units (to be used by other modules)
+# UNITS (USED BY OTHER MODULES)
 # =============================================================================
 unitRegistry  = pint_u
 u             = pint_u
-Quantity      = pint_q
+Quantity      = pint_q  # type: ignore[misc]
 
 # =============================================================================
-# SOME CONSTANTS
+# CONSTANTS
 # =============================================================================
-''' gravity '''
+''' Gravitational acceleration. '''
 CTE_G     = 9.80665 * u.m/u.s**2
-''' normal temperature '''
+''' Normal temperature. '''
 CTE_NT    = 20.0 * u.degC
-''' normal pressure '''
+''' Normal pressure. '''
 CTE_NP    = (1.0 * u.atm).to(u.Pa)
-''' the medium "water" at normal conditions '''
+''' Water at normal conditions. '''
 CTE_WATER = Chemical('water', P=CTE_NP.magnitude, T=CTE_NT.to(u.degK).magnitude)
-''' density of water '''
+''' Water density. '''
 CTE_RHO   = CTE_WATER.rho * u.kg/u.m**3
-''' dynamic viscosity '''
+''' Dynamic viscosity. '''
 CTE_MU    = CTE_WATER.mu  * u.Pa*u.s
-''' kinematic viscosity '''
+''' Kinematic viscosity. '''
 CTE_NU    = CTE_WATER.nu  * u.m**2/u.s
-''' thermal conductivity of water '''
+''' Thermal conductivity of water. '''
 CTE_K     = CTE_WATER.k   * u.W/u.m/u.degK
-''' absolute roughness (epsilon) of stainless steel '''
+''' Absolute roughness (epsilon) of stainless steel. '''
 CTE_E_RVS = 1.6 * u.um
 
 # =============================================================================
 # MEDIUM CLASS
 # =============================================================================
 class Medium ():
-  ''' Class represinting a medium.
-      Can be created just using a name known to the fluids chemical module.
-      Can also get an arbitrary name. In that case, the user has to provide the constants (rho, mu, ...)
+  ''' Class representing a medium.
+
+      It can be created from a thermo product name.
+      It can also be user-defined by explicitly providing properties
+      such as rho, mu, and k.
 
   Args:
-    prd (str, optional): The product (in the fluids chemical module) name.
-      Defaults to 'water'.
+    prd (str, optional): Product name known to thermo.
     name (str, optional): Medium name.
-      Defaults to self._prd.
-    T (int | float | Quantity, optional): The temperature.
-      Defaults to 20°C.
-    p (int | float | Quantity, optional): The pressure.
-      Defaults to atmospheric pressure.
-    rho (int | float | Quantity, optional): The density.
-      Defaults to water (at temperature).
-    mu (int | float | Quantity, optional): The kinematic viscosity.
-      Defaults to water (at temperature).
-    k (int | float | Quantity, optional): The thermal conductivity.
-      Defaults to water (at temperature).
+    T (int | float | Quantity, optional): Temperature.
+    p (int | float | Quantity, optional): Pressure.
+    rho (int | float | Quantity, optional): Density.
+    mu (int | float | Quantity, optional): Dynamic viscosity.
+    k (int | float | Quantity, optional): Thermal conductivity.
 
   Returns:
     None
@@ -74,19 +100,17 @@ class Medium ():
     self._prd: str = args.getArg(
       'prd',
       [
-          flsa.vFun.default('water'),
-          flsa.vFun.istype(str),
+        flsa.vFun.default('water'),
+        flsa.vFun.istype(str),
       ]
     )
     self._name: str = args.getArg(
       'name',
       [
-          flsa.vFun.default(self._prd),
-          flsa.vFun.istype(str),
+        flsa.vFun.default(self._prd),
+        flsa.vFun.istype(str),
       ]
     )
-    # the product out of the chemical library, if it exists
-    self._cprd = None
     # conditions
     self._T: Quantity = args.getArg(
       'T',
@@ -104,40 +128,46 @@ class Medium ():
         flsa.vFun.tounits(u.bar)
       ]
     )
-    # update the product with this conditions
-    #self._updateProduct()
     # override rho, mu, k
-    self._rho: Quantity = args.getArg(
-      'rho',
-      [
-        flsa.vFun.default(CTE_RHO),
-        flsa.vFun.istype((float, Quantity)),
-        flsa.vFun.tounits(u.kg/u.m**3)
-      ]
-    )
-    self._mu: Quantity = args.getArg(
-      'mu',
-      [
-        flsa.vFun.default(CTE_MU),
-        flsa.vFun.istype((float, Quantity)),
-        flsa.vFun.tounits(u.Pa*u.s)
-      ]
-    )
-    self._k: Quantity = args.getArg(
-      'k',
-      [
-        flsa.vFun.default(CTE_K),
-        flsa.vFun.istype((float, Quantity)),
-        flsa.vFun.tounits(u.W/u.m/u.degK)
-      ]
-    )
+    # update the product with this conditions
+    self._rho_override = 'rho' in kwargs
+    self._mu_override  = 'mu' in kwargs
+    self._k_override   = 'k' in kwargs
+    self._updateProduct()
+    if (self._cprd is None and not (self._rho_override and self._mu_override and self._k_override)):
+      raise ValueError(f'Medium must have a valid prd or have a rho, mu and k')
+    if self._rho_override:
+      self._rho: Quantity = args.getArg(
+        'rho',
+        [
+          flsa.vFun.istype(float, Quantity),
+          flsa.vFun.tounits(u.kg/u.m**3)
+        ]
+      )
+    if self._mu_override:
+      self._mu: Quantity = args.getArg(
+        'mu',
+        [
+          flsa.vFun.istype(float, Quantity),
+          flsa.vFun.tounits(u.Pa*u.s)
+        ]
+      )
+    if self._k_override:
+      self._k: Quantity = args.getArg(
+        'k',
+        [
+          flsa.vFun.istype(float, Quantity),
+          flsa.vFun.tounits(u.W/u.m/u.degK)
+        ]
+      )
+  
 
   @property
   def name(self) -> str:
     ''' Name property.
 
     Returns:
-      Str: Name property.
+      str: Name property.
     '''
     return self._name
 
@@ -156,7 +186,7 @@ class Medium ():
     ''' Temperature property.
 
     Returns:
-      Quantity: Temperature in °C (internally stored in K).
+      Quantity: Temperature in degC (internally stored in K).
     '''
     return self._T.to(u.degC)
 
@@ -165,10 +195,9 @@ class Medium ():
     ''' Set temperature.
 
     Args:
-      value (int | float | Quantity): temperature (default in °C).
+      value (int | float | Quantity): Temperature.
     '''
-    flsa.toUnits(value, u.degC)
-    flsa.toUnits(value, u.degK)
+    self._T = flsa.toUnits(value, u.degK)
     self._updateProduct()
 
   @property
@@ -176,7 +205,7 @@ class Medium ():
     ''' Pressure property.
 
     Returns:
-      Quantity: Pressure (in bar) property.
+      Quantity: Pressure property (bar).
     '''
     return self._p
 
@@ -185,9 +214,9 @@ class Medium ():
     ''' Set pressure property.
 
     Args:
-      value (int | float | Quantity): Presure (default in bar).
+      value (int | float | Quantity): Pressure.
     '''
-    flsa.toUnits(value, u.bar)
+    self._p = flsa.toUnits(value, u.bar)
     self._updateProduct()
 
   @property
@@ -195,7 +224,7 @@ class Medium ():
     ''' Density property.
 
     Returns:
-      Quantity: Density (in kg/m3) property.
+      Quantity: Density property (kg/m3).
     '''
     return self._rho
 
@@ -206,71 +235,76 @@ class Medium ():
     Args:
       value (int | float | Quantity): Density (default in kg/m3).
     '''
-    flsa.toUnits(value, u.kg/u.m**3)
+    self._rho_override = True
+    self._rho = flsa.toUnits(value, u.kg/u.m**3)
 
   @property
   def mu(self) -> Quantity:
-    ''' Kinematic viscosity property.
+    ''' Dynamic viscosity property.
 
     Returns:
-      Quantity: kinematic viscosity (in Pa.s) property.
+      Quantity: Dynamic viscosity property (Pa.s).
     '''
     return self._mu
 
   @mu.setter
   def mu(self, value: int | float | Quantity) -> None:
-    ''' Set  kinematic viscosity property.
+    ''' Set dynamic viscosity property.
 
     Args:
-      value (int | float | Quantity): Kinematic viscosity (default in Pa.s).
+      value (int | float | Quantity): Dynamic viscosity.
     '''
-    flsa.toUnits(value, u.Pa*u.s)
+    self._mu_override = True
+    self._mu = flsa.toUnits(value, u.Pa*u.s)
 
   @property
   def k(self) -> Quantity:
     ''' Thermal conductivity property.
 
     Returns:
-      Quantity: Thermal conductivity (in W/m/K) property.
+      Quantity: Thermal conductivity property (W/m/K).
     '''
     return self._k
 
   @k.setter
   def k(self, value: int | float | Quantity) -> None:
-    ''' Set k property.
+    ''' Set thermal conductivity property.
 
     Args:
-      value (int | float | Quantity): Thermal conductivity (in W/m/K) property.
+      value (int | float | Quantity): Thermal conductivity.
     '''
-    flsa.toUnits(value, u.W/u.m/u.degK)
+    self._k_override = True
+    self._k = flsa.toUnits(value, u.W/u.m/u.degK)
 
-  def _updateProduct(self):
-    ''' Update the properties from the chemical library product.
-    '''
+  def _updateProduct(self) -> Any:
+    ''' Update derived properties from the thermo product model. '''
     if len(self._prd)>0:
-      self._cprd = Chemical(self._prd, P=self._p.magnitude, T=self._T.to(u.degK).magnitude)
-      self._rho  = self._cprd.rho * u.kg/u.m**3
-      self._mu   = self._cprd.mu * u.Pa*u.s
-      self._k    = self._cprd.k * u.W/u.m/u.degK
+      self._cprd = Chemical(self._prd, P=self._p.to(u.Pa).magnitude, T=self._T.to(u.degK).magnitude)
+      if not  self._rho_override:
+        self._rho  = self._cprd.rho * u.kg/u.m**3
+      if not  self._mu_override:
+        self._mu   = self._cprd.mu * u.Pa*u.s
+      if not  self._k_override:
+        self._k    = self._cprd.k * u.W/u.m/u.degK
     else:
       self._cprd = None
 
   def __str__(self) -> str:
-    ''' String representation
+    ''' String representation.
 
     Returns:
-        str: String representation
+      str: String representation.
     '''
     return self.toString(0)
 
-  def toString(self, detail=0) -> str:
-    ''' String representation. Can be in more or less detail.
+  def toString(self, detail: Any=0) -> str:
+    ''' Return string representation.
 
     Args:
-        detail (int, optional): The details to be returned. Defaults to 0.
+      detail (int, optional): Detail level.
 
     Returns:
-        str: String representation
+      str: String representation.
     '''
     if detail == 0:
       if self._name=='':
@@ -284,10 +318,10 @@ class Medium ():
         return f'Medium {self._name} : T:{self._T:.2f~P}, p:{self._p:.2f~P}, rho:{self._rho:.2f~P}, mu:{self._mu:.2e~P}, k:{self._k:.2e~P}'
 
   def __repr__(self) -> str:
-    ''' Representation of the medium object
+    ''' Representation of the medium object.
 
     Returns:
-        str: representation
+      str: Representation.
     '''
     if self._name=='':
       return f'Medium(prd="water",rho={self._rho:.2f~P}, mu={self._mu:.2e~P})'

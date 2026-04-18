@@ -1,13 +1,8 @@
 '''
-    e00_fluids
+    e04_cat.py
 
-    Example for the `catalogue` submodule.
-
-    There are basically two functionalities:
-    * finding libraries
-    * finding records in a library or a set of libraries
-
-    The search string can be a term or a logial expression of rearch terms.
+    Example for the catalogue subsystem.
+    Shows library discovery and record filtering with query expressions.
 '''
 
 #******************************************************************************

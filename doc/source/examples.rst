@@ -1,8 +1,8 @@
 Examples
 ========
 
-Test: `a00_test`
-----------------
+Example: `a00_test`
+-------------------
 
 .. automodule:: x_examples.a00_test
    :exclude-members:
@@ -11,8 +11,8 @@ Test: `a00_test`
    :language: python
    :linenos:
 
-Test: `e00_fluids`
-------------------
+Example: `e00_fluids`
+---------------------
 
 .. automodule:: x_examples.e00_fluids
    :exclude-members:
@@ -21,8 +21,8 @@ Test: `e00_fluids`
    :language: python
    :linenos:
 
-Test: `e01_basic`
------------------
+Example: `e01_basic`
+--------------------
 
 .. automodule:: x_examples.e01_basic
    :exclude-members:
@@ -31,8 +31,8 @@ Test: `e01_basic`
    :language: python
    :linenos:
 
-Test: `e02_basic`
------------------
+Example: `e02_basic`
+--------------------
 
 .. automodule:: x_examples.e02_basic
    :exclude-members:
@@ -41,8 +41,8 @@ Test: `e02_basic`
    :language: python
    :linenos:
 
-Test: `e03_serial`
-------------------
+Example: `e03_serial`
+---------------------
 
 .. automodule:: x_examples.e03_serial
    :exclude-members:
@@ -51,8 +51,8 @@ Test: `e03_serial`
    :language: python
    :linenos:
 
-Test: `e04_cat`
----------------
+Example: `e04_cat`
+------------------
 
 .. automodule:: x_examples.e04_cat
    :exclude-members:
@@ -61,8 +61,8 @@ Test: `e04_cat`
    :language: python
    :linenos:
 
-Test: `e05_medium`
-------------------
+Example: `e05_medium`
+---------------------
 
 .. automodule:: x_examples.e05_medium
    :exclude-members:
@@ -71,8 +71,8 @@ Test: `e05_medium`
    :language: python
    :linenos:
 
-Test: `e06_orifice`
--------------------
+Example: `e06_orifice`
+----------------------
 
 .. automodule:: x_examples.e06_orifice
    :exclude-members:
@@ -81,8 +81,8 @@ Test: `e06_orifice`
    :language: python
    :linenos:
 
-Test: `e07_exitflow`
---------------------
+Example: `e07_exitflow`
+-----------------------
 
 .. automodule:: x_examples.e07_exitflow
    :exclude-members:
@@ -91,8 +91,28 @@ Test: `e07_exitflow`
    :language: python
    :linenos:
 
-Test: `e10_plot`
-----------------
+Example: `e08_wp`
+-----------------
+
+.. automodule:: x_examples.e08_wp
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e08_wp.py
+   :language: python
+   :linenos:
+
+Example: `e09_valve`
+--------------------
+
+.. automodule:: x_examples.e09_valve
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e09_valve.py
+   :language: python
+   :linenos:
+
+Example: `e10_plot`
+-------------------
 
 .. automodule:: x_examples.e10_plot
    :exclude-members:
@@ -101,8 +121,8 @@ Test: `e10_plot`
    :language: python
    :linenos:
 
-Test: `e11_plot`
-----------------
+Example: `e11_plot`
+-------------------
 
 .. automodule:: x_examples.e11_plot
    :exclude-members:
@@ -111,8 +131,8 @@ Test: `e11_plot`
    :language: python
    :linenos:
 
-Test: `e12_plot`
-----------------
+Example: `e12_plot`
+-------------------
 
 .. automodule:: x_examples.e12_plot
    :exclude-members:
@@ -121,8 +141,18 @@ Test: `e12_plot`
    :language: python
    :linenos:
 
-Test: `e13_pump_rpm`
---------------------
+Example: `e13_plot_valve`
+-------------------------
+
+.. automodule:: x_examples.e13_plot_valve
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e13_plot_valve.py
+   :language: python
+   :linenos:
+
+Example: `e13_pump_rpm`
+-----------------------
 
 .. automodule:: x_examples.e13_pump_rpm
    :exclude-members:
@@ -131,8 +161,8 @@ Test: `e13_pump_rpm`
    :language: python
    :linenos:
 
-Test: `e20_pump_serial`
------------------------
+Example: `e20_pump_serial`
+--------------------------
 
 .. automodule:: x_examples.e20_pump_serial
    :exclude-members:
@@ -141,8 +171,8 @@ Test: `e20_pump_serial`
    :language: python
    :linenos:
 
-Test: `e21_pump_serial`
------------------------
+Example: `e21_pump_serial`
+--------------------------
 
 .. automodule:: x_examples.e21_pump_serial
    :exclude-members:
@@ -151,8 +181,8 @@ Test: `e21_pump_serial`
    :language: python
    :linenos:
 
-Test: `e22_pump_parallel`
--------------------------
+Example: `e22_pump_parallel`
+----------------------------
 
 .. automodule:: x_examples.e22_pump_parallel
    :exclude-members:
@@ -161,8 +191,8 @@ Test: `e22_pump_parallel`
    :language: python
    :linenos:
 
-Test: `e30_basic`
------------------
+Example: `e30_basic`
+--------------------
 
 .. automodule:: x_examples.e30_basic
    :exclude-members:
@@ -171,8 +201,18 @@ Test: `e30_basic`
    :language: python
    :linenos:
 
-Test: `e50_plot`
-----------------
+Example: `e31_valve`
+--------------------
+
+.. automodule:: x_examples.e31_valve
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e31_valve.py
+   :language: python
+   :linenos:
+
+Example: `e50_plot`
+-------------------
 
 .. automodule:: x_examples.e50_plot
    :exclude-members:

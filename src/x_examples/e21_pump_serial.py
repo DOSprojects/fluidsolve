@@ -1,9 +1,8 @@
 '''
-    e21_pump_serial
+  e21_pump_serial.py
 
-    Basic demo for an interactive QH-plot with a series of two different pump curves and a system curve.
-    For the pipe in the system, length and diameter can be modified.
-    For the pumps, the impeller speed can be modified.
+  Interactive Q-H plotting example for two different pumps in series.
+  Sliders modify pipe dimensions and both pump speeds.
 '''
 
 #******************************************************************************
@@ -12,25 +11,29 @@
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
-Quantity  = fls.Quantity
+Quantity  = fls.Quantity  # type: ignore[misc]
 
 #******************************************************************************
 # GLOBALS
 #******************************************************************************
 def fun1(value):
-  system.getItem(0).L = value
+  '''Update system pipe length from slider input.'''
+  system.getComp(0)['comp'].L = value
   plt.updateData()
 
 def fun2(value):
-  system.getItem(0).D = value
+  '''Update system pipe diameter from slider input.'''
+  system.getComp(0)['comp'].D = value
   plt.updateData()
 
 def fun3(value):
+  '''Update first pump speed and refresh combined serial curve.'''
   pump1.speed = value
   pumpS.updateCurve()
   plt.updateData()
 
 def fun4(value):
+  '''Update second pump speed and refresh combined serial curve.'''
   pump2.speed = value
   pumpS.updateCurve()
   plt.updateData()
@@ -49,24 +52,28 @@ if __name__ == '__main__':
   print(d2)
   d20 = d2[0]
   
-  flsbuilder = fls.ComponentBuilder(prefix_wpt='p')
-  pump1 = flsbuilder.getComp(comp='PumpCentrifugal', dataQH=d10['dataQH'], impeller0=d10['impeller0'], speed0=d10['speed0'])
-  pump2 = flsbuilder.getComp(comp='PumpCentrifugal', dataQH=d20['dataQH'], impeller0=d20['impeller0'], speed0=d20['speed0'])
-  pumpS = flsbuilder.getComp(comp='PumpSerial', pumps=[pump1, pump2])
+  fls.initFluidsolve(prefix_wpt='p')
+  pump1 = fls.getComp(comp='PumpCentrifugal', dataQH=d10['dataQH'], impeller0=d10['impeller0'], speed0=d10['speed0'])
+  pump2 = fls.getComp(comp='PumpCentrifugal', dataQH=d20['dataQH'], impeller0=d20['impeller0'], speed0=d20['speed0'])
+  pumpS = fls.getComp(comp='PumpSerial', pumps=[pump1, pump2])
   L = 315 * u.m
   dia  = 65
   dia2 = 40
   #
-  system = flsbuilder.getComp(comp='Serial')
-  system.addItem(flsbuilder.getComp(comp='Tube', L=L, D=dia))
-  system.addItem(flsbuilder.getComp(comp='Entrance', D=dia, use=1))
-  system.addItem(flsbuilder.getComp(comp='Entrance', D=dia, use=-1))
-  system.addItem(flsbuilder.getComp(comp='BendLong', D=dia, A=30, n=2))
-  system.addItem(flsbuilder.getComp(comp='Bend', D=dia, A=45, R=5))
-  system.addItem(flsbuilder.getComp(comp='SharpReduction', D1=dia, D2=dia2, use=1))
-  system.addItem(flsbuilder.getComp(comp='SharpReduction', D1=dia2, D2=dia, use=-1))
+  system = fls.getPath(
+    name='path 1', 
+    components=[
+      {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
+      {'comp': fls.getComp(comp='Entrance', D=dia)},
+      {'comp': fls.getComp(comp='Entrance', D=dia), 'sense': -1},
+      {'comp': fls.getComp(comp='BendLong', D=dia, A=30, n=2)},
+      {'comp': fls.getComp(comp='Bend', D=dia, A=45, R=5)},
+      {'comp': fls.getComp(comp='SharpReduction', D1=dia, D2=dia2)},
+      {'comp': fls.getComp(comp='Reverse', reverse=fls.getComp(comp='SharpReduction', D1=dia, D2=dia2))},
+    ],
+  )
   #
-  wpt = flsbuilder.getWpt(wpt='d', s1=pumpS, s2= system)
+  wpt = fls.getWpt(wpt='d', s1=pumpS, s2= system)
   #
   plt = fls.PlotQHcurve(
     pumps=[pump1, pump2, pumpS], 
@@ -74,8 +81,8 @@ if __name__ == '__main__':
     wpoints=[wpt], 
     title=f'Pumpcurve: 2 serial pumps',
     sliders=[
-      dict(label='L (m)', vmin=100, vmax=800, vinit=system.getItem(0).L.magnitude, fun=fun1),
-      dict(label='D (mm)', vmin=25, vmax=65, vinit=system.getItem(0).D.magnitude, fun=fun2),
+      dict(label='L (m)', vmin=100, vmax=800, vinit=system.getComp(0)['comp'].L.magnitude, fun=fun1),
+      dict(label='D (mm)', vmin=25, vmax=65, vinit=system.getComp(0)['comp'].D.magnitude, fun=fun2),
       dict(label='P1 speed (rpm)', vmin=1450, vmax=2900, vinit=2900, fun=fun3),
       dict(label='P2 speed (rpm)', vmin=1450, vmax=2900, vinit=2600, fun=fun4),
     ]

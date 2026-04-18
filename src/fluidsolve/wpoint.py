@@ -1,10 +1,36 @@
 '''
-This module implements some classes to represent a working point (in the Q-H plane).
+Working-point models in the Q-H (flow-head) plane.
 
-One class is a static working point.
-A second one contains a reference to a pump and a circuit.
-This one can recalculate the Q and H depending on the changes in pump and circuit.
-This one is needed to implement an interactive Q-H plot
+This module defines classes used to represent and update operating points of
+hydraulic systems, especially for pump/circuit analysis and plotting.
+
+Main classes:
+
+* ``Wpoint``: static working point storing fixed ``Q`` and ``H`` values.
+* ``WpointDyn``: dynamic working point linked to pump/circuit behavior,
+  recalculating operating conditions when upstream model parameters change.
+
+Typical use cases:
+
+* annotate operating points on Q-H diagrams,
+* compute updated intersection points after speed or resistance changes,
+* drive interactive plotting workflows where pump/circuit parameters vary.
+
+Design intent:
+
+* keep operating-point logic explicit and reusable,
+* separate point-state representation from component/network topology,
+* provide unit-safe interfaces for both static and dynamic workflows.
+
+Typical usage::
+
+  wp = Wpoint(name='nominal', Q=5 * u.m**3 / u.h, H=12 * u.m)
+  dyn = WpointDyn(name='op', pump=pump, circuit=circuit)
+  dyn.recalc()
+  print(dyn.Q, dyn.H)
+
+These classes are lightweight but central for connecting solver outputs to
+engineering interpretation and visualization.
 '''
 # =============================================================================
 # IMPORTS
@@ -20,16 +46,22 @@ import fluidsolve.medium    as flsm
 import fluidsolve.comp_base as flsb
 # units
 u         = flsm.unitRegistry
-Quantity  = flsm.Quantity
+Quantity  = flsm.Quantity  # type: ignore[misc]
 
 
 # =============================================================================
-# WORKIN POINT CLASSES
+# WORKING POINT CLASSES
 # =============================================================================
 
-#******************************************************************************
-# (working) point in HQ plane
+# =============================================================================
 class Wpoint ():
+  ''' Static working point in the Q-H plane.
+
+  Args:
+    name (str, optional): Working point label.
+    Q (int | float | Quantity, optional): Flow rate (default in m3/h).
+    H (int | float | Quantity, optional): Head (default in m).
+  '''
   def __init__(self, **kwargs: int) -> None:
     args_in = flsa.GetArgs(kwargs)
     self._name: str = args_in.getArg(
@@ -58,11 +90,7 @@ class Wpoint ():
 
   @property
   def name(self) -> str:
-    ''' Name property.
-
-    Returns:
-      Str: Name property.
-    '''
+    ''' Name of the working point. '''
     return self._name
 
   @name.setter
@@ -76,11 +104,7 @@ class Wpoint ():
 
   @property
   def Q(self) -> Quantity:
-    ''' Working point flow property.
-
-    Returns:
-      Quantity: Flow (in m3/h) property.
-    '''
+    ''' Flow rate (in m3/h). '''
     return self._Q.to(u.m**3/u.h)
 
   @Q.setter
@@ -94,11 +118,7 @@ class Wpoint ():
 
   @property
   def H(self) -> Quantity:
-    ''' Working point head property.
-
-    Returns:
-      Quantity: Head (in m) property.
-    '''
+    ''' Head (in m). '''
     return self._H.to(u.m)
 
   @H.setter
@@ -111,26 +131,17 @@ class Wpoint ():
     self._H = flsa.toUnits(value, u.m)
 
   @property
-  def Qmag(self) -> Quantity:
-    ''' Working point flow magnitude property.
-
-    Returns:
-      Quantity: Flow magnitude property.
-    '''
+  def Qmag(self) -> float:
+    ''' Flow rate magnitude (in m3/h). '''
     return self._Q.to(u.m**3/u.h).magnitude
 
   @property
-  def Hmag(self) -> Quantity:
-    ''' Working point head magnitude property.
-
-    Returns:
-      Quantity: Head magnitude property.
-    '''
+  def Hmag(self) -> float:
+    ''' Head magnitude (in m). '''
     return self._H.to(u.m).magnitude
 
   def update(self) -> 'Wpoint':
-    ''' Update the Q an H.
-    In this base class, this does nothing an only returns itself.
+    ''' Update Q and H. In this base class returns self unchanged.
 
     Returns:
       Wpoint: self.
@@ -149,9 +160,18 @@ class Wpoint ():
     else:
       return f'Pt {self._name}: Q: {self._Q.to(u.m**3/u.h):.2f~P}, H: {self.H.to(u.m):.2f~P}'
 
-#******************************************************************************
-# (working) point in HQ plane
+# =============================================================================
 class WpointDyn (Wpoint):
+  ''' Dynamic working point that recalculates Q and H from two components.
+
+  Args:
+    s1 (Comp_Base, optional): First component (e.g. pump curve).
+    s2 (Comp_Base, optional): Second component (e.g. system curve).
+    guess (int | float | list, optional): Initial flow guess for the solver.
+    name (str, optional): Working point label.
+    Q (int | float | Quantity, optional): Initial flow rate (default in m3/h).
+    H (int | float | Quantity, optional): Initial head (default in m).
+  '''
   def __init__(self, **kwargs: int) -> None:
     args_in: dict = flsa.GetArgs(kwargs)
     self._s1: Any = args_in.getArg(
@@ -168,44 +188,53 @@ class WpointDyn (Wpoint):
           flsa.vFun.istype(flsb.Comp_Base),
       ]
     )
+    self._guess : int | float | list =args_in.getArg(
+      'guess',
+      [
+          flsa.vFun.default(200),
+          flsa.vFun.istype(int, float, list),
+      ]
+    )
     super().__init__(**args_in.restArgs())
     self.update()
 
-  def update(self):
-    ''' Update the Q an H.
-    The recalculation is done on the data in pump and system.
-    This can be useful if the data in system or pump is modified interactively.
+  def update(self) -> 'WpointDyn':
+    ''' Recalculate Q and H from the two components.
 
     Returns:
-      Wpoint: self.
+      WpointDyn: self.
     '''
     if self._s1 is not None and self._s2 is not None:
-      self._Q, self._H= calcOperatingPoint(self._s1, self._s2)
+      self._Q, self._H= calcOperatingPoint(self._s1, self._s2, self._guess)
     return self
 
 # =============================================================================
 # SOLVERS
 # =============================================================================
 
-#******************************************************************************
-# Operating point
-def calcOperatingPoint(c1: Any, c2:Any, guess=200) -> tuple:
-  ''' Calculate an operating point for two given curves.
-      Mostly this will be a pump curve and system curve.
-      The component can be any component and thus be a series of components with Comp_Serial.
+# =============================================================================
+def calcOperatingPoint(c1: Any, c2:Any, guess: Any=200) -> tuple:
+  ''' Calculate the operating point for two intersecting curves.
+
+  Typically a pump curve and a system curve; each component may itself
+  be a composite (e.g. Comp_Serial).
 
   Args:
-      c1 (Comp_Base): The first component
-      c2 (Comp_Base): The second component
+    c1 (Comp_Base): First component.
+    c2 (Comp_Base): Second component.
+    guess (int | float | list, optional): Initial flow guess for the solver.
 
   Returns:
-      tuple: a tuple (Q, H)
+    tuple[Quantity, Quantity]: Operating point (Q, H).
   '''
 
-  def F(Q: int | float):
-    return (abs(c1.calcH(Q, 1)) - abs(c2.calcH(Q, 1))).magnitude
+  def F(Q: int | float) -> Any:
+    #return (abs(c1.calcH(Q, 1)) - abs(c2.calcH(Q, 1))).magnitude
+    return (c1.calcH(Q, 1) + c2.calcH(Q, 1)).magnitude
 
-  res = fsolve(func=F, x0=guess)
+  res, _info, ier, msg = fsolve(func=F, x0=guess, full_output=True)
+  if ier != 1:
+    raise ValueError(f'Operating point did not converge: {msg}')
   Q = res[0] * u.m**3/u.h
   H = abs(c2.calcH(Q, 1))
   return (Q, H)

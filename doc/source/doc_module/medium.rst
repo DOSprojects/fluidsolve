@@ -5,3 +5,4 @@ The ``medium`` submodule
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: Quantity, u, unitRegistry

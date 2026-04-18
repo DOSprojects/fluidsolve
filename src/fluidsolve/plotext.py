@@ -1,5 +1,35 @@
 '''
-This module implements some extra plotting functionality.
+High-level plotting helpers for hydraulic Q-H analysis.
+
+This module extends the lower-level plotting utilities by providing
+domain-focused plotting workflows for pump/circuit interaction diagrams,
+especially Q-H (flow-head) charts.
+
+Main responsibilities:
+
+* collect pumps, circuits, and operating points in a unified plot context,
+* generate sampled Q-H curves and overlay system/working points,
+* provide plotting controls for labels, ranges, and slider-driven interaction,
+* bridge hydraulic model objects with matplotlib-based presentation.
+
+Design intent:
+
+* keep engineering plotting logic close to hydraulic concepts,
+* reduce repetitive plotting boilerplate in examples and notebooks,
+* allow quick visual comparison of pump curves vs circuit demand curves.
+
+Typical usage::
+
+  plotter = PlotQHcurve(
+      pumps=[pump],
+      circuits=[circuit],
+      wpoints=[wp],
+      npts=80,
+  )
+  plotter.show()
+
+For generic figure/canvas mechanics, this module builds on ``plotlib`` and
+adds hydraulic-specific composition rules on top.
 '''
 # =============================================================================
 # IMPORTS
@@ -9,27 +39,34 @@ import numpy                  as np
 import matplotlib.pyplot      as mplt
 # module own
 import fluidsolve.aux_tools   as flsa
-import fluidsolve.medium      as flsm
+import fluidsolve.medium      as flsme
 import fluidsolve.plotlib     as flsp
 # units
-u         = flsm.unitRegistry
-Quantity  = flsm.Quantity
+u         = flsme.unitRegistry
+Quantity  = flsme.Quantity  # type: ignore[misc]
 # =============================================================================
-# CLASS TO PLOT Q-H curve
+# PLOT Q-H CURVE CLASS
 # =============================================================================
 class PlotQHcurve:
-  ''' Class to plot a Q-H diagramma
+  ''' Plot a Q-H diagram with pump curves, circuit curves, and working points.
 
   Args:
-    pumps (afp.Pump | list[afp.Pump]): _description_
-    circuits (afci.Circuit | list[afci.Circuit]): _description_
-    points (afwp.Wpoint | list[afwp.Wpoint], optional): _description_. Defaults to None.
-    Qstep (int | float, optional): _description_. Defaults to 100.
-    Qmax (int | float, optional): _description_. Defaults to 50.
-    Hmax (int | float, optional): _description_. Defaults to 50.
-    title (str, optional): _description_. Defaults to 'Q-H'.
-    xlabel (str, optional): _description_. Defaults to 'Q (m³/h)'.
-    ylabel (str, optional): _description_. Defaults to 'H (m)'.
+    pumps (object | list): Pump or list of pumps.
+    circuits (object | list): Circuit or list of circuits.
+    wpoints (object | list, optional): Working points to mark.
+    spoints (object | list, optional): System (static) points to mark.
+    npts (int, optional): Number of curve sample points.
+    Qmax (int | float | Quantity, optional): Maximum flow on Q axis.
+    Hmax (int | float | Quantity, optional): Maximum head on H axis.
+    xlabel (str, optional): X-axis label.
+    ylabel (str, optional): Y-axis label.
+    sliders (list, optional): Slider widget definitions.
+    xmin (int | float, optional): X-axis minimum override.
+    xmax (int | float, optional): X-axis maximum override.
+    xstep (int | float, optional): X-axis major tick step override.
+    ymin (int | float, optional): Y-axis minimum override.
+    ymax (int | float, optional): Y-axis maximum override.
+    ystep (int | float, optional): Y-axis major tick step override.
   '''
 
   def __init__(self, **kwargs: int) -> None:
@@ -199,17 +236,20 @@ class PlotQHcurve:
     #
     self._prepare         : bool  = True
 
-  def update(self):
+  def update(self) -> Any:
+    ''' Recalculate and redraw the full figure. '''
     self._calcAndUpdate()
-    #TODO
+    self._fig.update()
     self._fig.update()
 
-  def updateData(self):
+  def updateData(self) -> Any:
+    ''' Recalculate and update only the plot data without a full redraw. '''
     self._calcAndUpdate()
     self._fig.updateData()
 
 
   def prepareShow(self) -> None:
+    ''' Build plot objects and calculate initial data. '''
     if self._prepare:
       for _pump in self._pumps:
         self._curvepumps.append(flsp.PlotCurve(self._graph, type='line', extra=dict(zorder=1),))
@@ -239,18 +279,20 @@ class PlotQHcurve:
     self.prepare = False
 
   def show(self) -> None:
+    ''' Prepare and display the plot. '''
     self.prepareShow()
     self._fig.show()
 
   def _calcAndUpdate(self) -> None:
-    ''' Calculate the curves and update the plot
-        Keep in mind that Q is in m3/h and H in m, but we work with magnitudes (so the units are stripped)
+    ''' Recalculate curves and push updated data to all plot objects.
+
+        Q is in m3/h and H in m; all values are passed as bare magnitudes.
     '''
     for i in range(len(self._pumps)):
       pump = self._pumps[i]
       curve = self._curvepumps[i]
       Qpts_p_mag = np.linspace(pump._Qb.magnitude, pump._Qe.magnitude, self._npts)
-      Hpts_p_mag = pump.calcH(Qpts_p_mag).magnitude
+      Hpts_p_mag = pump.calcH(Qpts_p_mag, 1).magnitude
       ptrim = np.argmax(Hpts_p_mag<=0)
       if ptrim>0:
         Qpts_p_mag = Qpts_p_mag[:ptrim]
@@ -261,7 +303,7 @@ class PlotQHcurve:
     for i in range(len(self._circuits)):
       circuit = self._circuits[i]
       curve = self._curvecircuits[i]
-      Hpts_c_mag = abs(circuit.calcH(Qpts_c_mag, use=1).magnitude)
+      Hpts_c_mag = abs(circuit.calcH(Qpts_c_mag, 1).magnitude)
       curve.x =Qpts_c_mag
       curve.y =Hpts_c_mag
     for i in range(len(self._wpoints)):
@@ -285,6 +327,7 @@ class PlotQHcurve:
       annotation.y =[spoint.Hmag]
       annotation.label = [spoint.name]
 
-  def _resetControls(self, event):
+  def _resetControls(self, event: Any) -> Any:
+    ''' Reset all slider widgets to their initial values. '''
     for slider in self._sliders:
       slider.widget.reset()

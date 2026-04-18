@@ -1,29 +1,35 @@
 '''
-Tool to generate the examples.rst and tests.rst
+gen_examples_tests.py
 
+Generate docs/source/examples.rst and docs/source/tests.rst from static snippets
+and discovered Python modules.
 '''
-import os
+from pathlib import Path
+
+
+def _doc_root() -> Path:
+    '''Return the documentation root directory (doc).'''
+    return Path(__file__).resolve().parents[2] / 'doc'
 
 def generate_examples_rst():
-    '''
-    Generate examples.rst by combining static files and autodoc blocks for modules in src/x_examples.
-    '''
-    fstatic =  os.path.join('source', '_gen', 'examples_static.rst')
-    dir = os.path.abspath('../src/x_examples')
+    '''Generate examples.rst from x_examples modules and static content.'''
+    doc_root = _doc_root()
+    fstatic = doc_root / 'source' / '_gen' / 'examples_static.rst'
+    examples_dir = Path(__file__).resolve().parents[1] / 'x_examples'
     reldir = '../../src/x_examples'
-    foutput = os.path.abspath(os.path.join('source', 'examples.rst'))
+    foutput = doc_root / 'source' / 'examples.rst'
     # Read static content
     content = ''
-    if os.path.exists(fstatic):
-      with open(fstatic, 'r') as fhandle:
+    if fstatic.exists():
+      with fstatic.open('r', encoding='utf-8') as fhandle:
         content = fhandle.read()
     # List all .py files in the directory (excluding __init__.py)
     py_files = []
-    if os.path.exists(dir):
-      py_files = [f for f in os.listdir(dir) if f.endswith('.py') and f != '__init__.py']
+    if examples_dir.exists():
+      py_files = [f.name for f in examples_dir.glob('*.py') if f.name != '__init__.py']
       py_files.sort()
     for py_file in py_files:
-      fname = os.path.splitext(py_file)[0]
+      fname = Path(py_file).stem
       name = f'Test: `{fname}`'
       content += f'{name}\n' \
               + '-' * len(name) + '\n' \
@@ -36,29 +42,28 @@ def generate_examples_rst():
               + '   :linenos:\n' \
               + '\n' \
     # Write to examples.rst
-    with open(foutput, 'w') as f:
+    with foutput.open('w', encoding='utf-8') as f:
         f.write(content)
 
 def generate_tests_rst():
-    '''
-    Generate tests.rst by combining static files and autodoc blocks for modules in src/x_tests.
-    '''
-    fstatic =  os.path.join('source', '_gen', 'tests_static.rst')
-    dir = os.path.abspath('../src/x_tests')
+    '''Generate tests.rst from x_tests modules and static content.'''
+    doc_root = _doc_root()
+    fstatic = doc_root / 'source' / '_gen' / 'tests_static.rst'
+    tests_dir = Path(__file__).resolve().parents[1] / 'x_tests'
     reldir = '../../src/x_tests'
-    foutput = os.path.abspath(os.path.join('source', 'tests.rst'))
+    foutput = doc_root / 'source' / 'tests.rst'
     # Read static content
     content = ''
-    if os.path.exists(fstatic):
-      with open(fstatic, 'r') as fhandle:
+    if fstatic.exists():
+      with fstatic.open('r', encoding='utf-8') as fhandle:
         content = fhandle.read()
     # List all .py files in the directory (excluding __init__.py)
     py_files = []
-    if os.path.exists(dir):
-      py_files = [f for f in os.listdir(dir) if f.endswith('.py') and f != '__init__.py']
+    if tests_dir.exists():
+      py_files = [f.name for f in tests_dir.glob('*.py') if f.name != '__init__.py']
       py_files.sort()
     for py_file in py_files:
-      fname = os.path.splitext(py_file)[0]
+      fname = Path(py_file).stem
       name = f'Tests: `{fname}`'
       content += f'{name}\n' \
               + '-' * len(name) + '\n' \
@@ -71,9 +76,15 @@ def generate_tests_rst():
               + '   :linenos:\n' \
               + '\n' \
     # Write to examples.rst
-    with open(foutput, 'w') as f:
+    with foutput.open('w', encoding='utf-8') as f:
         f.write(content)
 
 
-generate_examples_rst()
-generate_tests_rst()
+def main() -> None:
+    '''Generate both examples and tests documentation pages.'''
+    generate_examples_rst()
+    generate_tests_rst()
+
+
+if __name__ == '__main__':
+    main()
