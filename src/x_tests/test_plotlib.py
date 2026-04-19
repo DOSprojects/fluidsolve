@@ -252,6 +252,14 @@ def test_plotaxis_grid_and_extra_validation() -> None:
   with pytest.raises(ValueError, match='Invalid extra'):
     grid.setExtra('bad', alpha=0.5)
 
+def test_plotaxis_applies_manual_limits_even_when_auto_ticks_remain_enabled() -> None:
+  graph = DummyParent()
+
+  axis = module_under_test.PlotAxis(graph, type='y1', vmax=30)
+  axis.show()
+
+  assert ('set_ylim', (), {'bottom': None, 'top': 30}) in graph.axes.calls
+
 def test_plotbutton_and_plotslider_show_bind_callbacks(monkeypatch) -> None:
   monkeypatch.setattr(module_under_test, 'Button', lambda *args, **kwargs: DummyWidget())
   monkeypatch.setattr(module_under_test, 'Slider', lambda *args, **kwargs: DummyWidget())

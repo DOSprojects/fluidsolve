@@ -178,7 +178,7 @@ class Comp_Valve_Kv(Comp_Valve):  # pylint: disable=invalid-name
   Throttling valve with equal percentage characteristic.
 
   state: valve position (0.0 = closed, 1.0 = fully open)
-  Kv at position s = Kvs * R^(s - 1)
+  Kv at position s = Kvs * (R^s - 1) / (R - 1)
   '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES
@@ -241,11 +241,15 @@ class Comp_Valve_Kv(Comp_Valve):  # pylint: disable=invalid-name
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcK(self, Q: Quantity, sense: int=1, pin: int=1, pout: int=2) -> float:
-    if self._state <= 0.0:
+  def calcK(self, Q: Quantity, sense: int=1, pin: int=1, pout: int=2) -> float:  # pylint: disable=unused-argument
+    state = min(max(0.0, self._state), 1.0)
+    if state <= 0.0:
       return 1e6
+    if self._R == 1.0:
+      kv = self._Kvs * state
     else:
-      return self._Kvs*self._R**(self._state-1.0)
+      kv = self._Kvs * (self._R ** state - 1.0) / (self._R - 1.0)
+    return min(1e6, flsu.KvtoK(kv, self._D))
 
 # =============================================================================
 # 3-WAY VALVE

@@ -1100,6 +1100,7 @@ class PlotAxis:
     ''' Show the axis; This is called by PlotGraph.show().
     '''
     ax = self._parent().axes
+    has_manual_limits = self._vmin is not None or self._vmax is not None
     if not self._auto:
       if self._vmin is None or self._vmax is None or self._vstep is None:
         raise ValueError ('Need vmin, vmax and vstep.')
@@ -1110,8 +1111,9 @@ class PlotAxis:
         axshared = self._shared.ax
         ax.sharex(axshared)
       else:
+        if has_manual_limits:
+          ax.set_xlim(left=self._vmin, right=self._vmax)
         if not self._auto:
-          ax.set_xlim(self._vmin, self._vmax)
           ax.set_xticks(ticks, **args)
           if self._vmstep is not None:
             ax.xaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
@@ -1125,8 +1127,9 @@ class PlotAxis:
         axshared = self._shared.ax
         ax.sharey(axshared)
       else:
+        if has_manual_limits:
+          ax.set_ylim(bottom=self._vmin, top=self._vmax)
         if not self._auto:
-          ax.set_ylim(self._vmin, self._vmax)
           ax.set_yticks(ticks, **args)
           if self._vmstep is not None:
             ax.yaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
