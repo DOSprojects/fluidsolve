@@ -4,14 +4,19 @@
   Basic plotting-module example.
   Demonstrates curves, lines, annotations, and widgets.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve       as fls
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   x1 = [x for x in range(0, 10)]
   y1 = [2+x*2 for x in range(0, 10)]
@@ -26,8 +31,8 @@ if __name__ == '__main__':
   graph2 = fls.PlotGraph(fig, r=0, c=1, title='gr2')
   graph2.setExtra('title', size=33)
   graph3 = fls.PlotGraph(fig, r=1, c='0:2', title='gr3')
-  graph3.setXAxis(vmin=-5, vmax=20, vstep=5, vmstep=3, labeltxt="eeee")
-  graph3.setYAxis(vmin=-50, vmax=50, vstep=20, vmstep=2, labeltxt="eeee")
+  graph3.setXAxis(vmin=-5, vmax=20, vstep=5, vmstep=3, labeltxt='x')
+  graph3.setYAxis(vmin=-50, vmax=50, vstep=20, vmstep=2, labeltxt='y')
   graph3.setGrid(axis='both')
   graph4 = fls.PlotGraph(fig, r=':', c=2, title='gr4')
   curve1 = fls.PlotCurve(graph1, x=x1, y=y2)

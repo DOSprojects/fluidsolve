@@ -41,14 +41,18 @@ Example::
       def calcH(self, Q, sense=1, pin=1, pout=2):
           return 0.5 * sense * u.m
 '''
-from typing import Any
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
+from typing import Any
 import copy
 from scipy.optimize import fsolve
 # module own
-import fluidsolve.aux_tools as flsa
+import fluidsolve.aux_tools  as flsa
 import fluidsolve.util       as flsu
 import fluidsolve.medium     as flsme
 # units
@@ -65,7 +69,7 @@ NO_MEDIUM   = object()
 # =============================================================================
 # BASE HYDRAULIC COMPONENT CLASS
 # =============================================================================
-class Comp_Base:
+class Comp_Base:  # pylint: disable=invalid-name
   ''' Base hydraulic component class used by specific component types.
 
   Args:
@@ -168,7 +172,8 @@ class Comp_Base:
       self._medium = flsme.Medium(prd=value)
     elif not isinstance(value, flsme.Medium):
       raise TypeError(f'Medium must be a string or an instance of Medium, got {type(value)}')
-    self._medium = value
+    else:
+      self._medium = value
 
   @property
   def e(self) -> Quantity:
@@ -202,7 +207,7 @@ class Comp_Base:
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:  # pylint: disable=unused-argument
     '''
     Calculate head change.
 
@@ -217,7 +222,7 @@ class Comp_Base:
     '''
     return 0.0 * u.m
 
-  def calcP(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcP(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     '''
     Calculate pressure change.
 
@@ -265,7 +270,7 @@ class Comp_Base:
       f'[{self._group}:{self._part}] '
       f'ports={self._nports}, '
       f'state={self._state}, '
-      f'Sign={"+" if self._sign > 0 else "-"}, '
+      f'Sign={"+" if self._sign > 0 else "-"}, '  # pylint: disable=inconsistent-quotes
       f'{self._medium.toString(detail)}'
     )
     return txt
@@ -273,7 +278,7 @@ class Comp_Base:
 # =============================================================================
 # DUMMY COMPONENT CLASS
 # =============================================================================
-class Comp_Dummy(Comp_Base):
+class Comp_Dummy(Comp_Base):  # pylint: disable=invalid-name
   ''' Dummy / empty component. '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES
@@ -293,7 +298,7 @@ class Comp_Dummy(Comp_Base):
 # =============================================================================
 # WRAPPER CLASS TO REVERSE USE A DIRECTIONAL COMPONENT
 # =============================================================================
-class Comp_Reverse(Comp_Base):
+class Comp_Reverse(Comp_Base):  # pylint: disable=invalid-name
   ''' Adapter that reverses flow direction of a wrapped component. '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES

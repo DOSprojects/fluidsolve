@@ -4,9 +4,14 @@
   Basic example combining fluids, pint, and fluidsolve.
   Shows equivalent calculations with explicit engineering units.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 # pylint: disable=no-member
 # Reason: fluids.units uses dynamic attributes that pylint can't detect
 import fluids.core      as fc
@@ -17,9 +22,9 @@ import fluidsolve       as fls
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   # some values
   Q = 30 *u.m**3/u.h

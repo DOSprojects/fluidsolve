@@ -4,18 +4,26 @@
   Basic comparison between fluids and fluidsolve pressure-drop calculations.
   Demonstrates both direct class construction and factory/builder usage.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+# pyright: reportAttributeAccessIssue=false
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
-import fluids.units as fu
+# =============================================================================
+from typing import Any
+import fluids.units as fu_module
 import fluidsolve   as fls
 # UNITS
+fu: Any   = fu_module
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
 
   mu = 0.001 * u.Pa*u.s
@@ -54,7 +62,7 @@ if __name__ == '__main__':
   print(fls.getDefaultMedium())
   print('----------\n')
   path1 = fls.getPath(
-    name='path 1', 
+    name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Entrance', D=dia)},
@@ -78,8 +86,8 @@ if __name__ == '__main__':
 
   print('|     |  K native  |   K fls    |    P native    |     P fls      |     H fls      |')
   print('|-----|------------|------------|----------------|----------------|----------------|')
-  for i in range(len(K_native)):
-    print(f'|  {i}  | {K_native[i].magnitude:>10,.4f} | {K_fls[i].magnitude:>10,.4f} | {P_native[i].to(u.bar):>10,.6f} | {P_fls[i]:>10,.6f} |  {H_fls[i]:>6,.2f}  |')
+  for i, k_native in enumerate(K_native):
+    print(f'|  {i}  | {k_native.magnitude:>10,.4f} | {K_fls[i].magnitude:>10,.4f} | {P_native[i].to(u.bar):>10,.6f} | {P_fls[i]:>10,.6f} |  {H_fls[i]:>6,.2f}  |')
   print('|-----|------------|------------|----------------|----------------|----------------|')
   print(f'| TOT | {K_native_T.magnitude:>10,.4f} | {K_fls_T.magnitude:>10,.4f} | {P_native_T.to(u.bar):>10,.6f} | {P_fls_T:>10,.6f} |  {H_fls_T:>6,.2f}  |')
   print('|-----|------------|------------|----------------|----------------|----------------|')

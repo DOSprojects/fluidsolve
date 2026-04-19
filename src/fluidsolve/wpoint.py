@@ -1,26 +1,18 @@
 '''
 Working-point models in the Q-H (flow-head) plane.
 
-This module defines classes used to represent and update operating points of
-hydraulic systems, especially for pump/circuit analysis and plotting.
+This module defines classes used to represent and update operating points of hydraulic systems, especially for pump/circuit analysis and plotting.
 
 Main classes:
 
 * ``Wpoint``: static working point storing fixed ``Q`` and ``H`` values.
-* ``WpointDyn``: dynamic working point linked to pump/circuit behavior,
-  recalculating operating conditions when upstream model parameters change.
+* ``WpointDyn``: dynamic working point linked to pump/circuit behavior, recalculating operating conditions when upstream model parameters change.
 
 Typical use cases:
 
 * annotate operating points on Q-H diagrams,
 * compute updated intersection points after speed or resistance changes,
 * drive interactive plotting workflows where pump/circuit parameters vary.
-
-Design intent:
-
-* keep operating-point logic explicit and reusable,
-* separate point-state representation from component/network topology,
-* provide unit-safe interfaces for both static and dynamic workflows.
 
 Typical usage::
 
@@ -29,19 +21,18 @@ Typical usage::
   dyn.recalc()
   print(dyn.Q, dyn.H)
 
-These classes are lightweight but central for connecting solver outputs to
-engineering interpretation and visualization.
 '''
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
-from typing                 import Optional, Any
-import numpy             as np
-import fluids.units      as fu
+from typing                 import Any
 from scipy.optimize         import fsolve
 # module own
 import fluidsolve.aux_tools as flsa
-import fluidsolve.util      as flsu
 import fluidsolve.medium    as flsm
 import fluidsolve.comp_base as flsb
 # units

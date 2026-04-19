@@ -4,14 +4,19 @@
   Basic network-module example.
   Builds and solves representative network configurations.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve       as fls
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   fls.initFluidsolve(prefix_wpt='p', prefix_comp='Comp_')
   cat = fls.Catalogue()
@@ -19,10 +24,10 @@ if __name__ == '__main__':
   if len(pumprecs)>0:
     pr0 = pumprecs[0]
   else:
-    raise ValueError('No pump found.')  
+    raise ValueError('No pump found.')
 
   net1 = fls.getNetwork(
-    name='net 1', 
+    name='net 1',
     components=[
       {'nodes': ['A','B'], 'comp': fls.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0']-200)},
       {'nodes': ['B','A'], 'sense': 1, 'comp': fls.getComp(comp='Tube', L=100, D=50)},
@@ -34,7 +39,7 @@ if __name__ == '__main__':
   print('==========================================================================')
 
   net2 = fls.getNetwork(
-    name='net 2', 
+    name='net 2',
     components=[
       {'nodes': ['A','B'], 'comp': fls.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0']-200)},
       {'nodes': ['B','C'], 'comp': fls.getComp(comp='Tube', L=100, D=50)},
@@ -48,7 +53,7 @@ if __name__ == '__main__':
   print('==========================================================================')
 
   net3 = fls.getNetwork(
-    name='net 3', 
+    name='net 3',
     components=[
       {'nodes': ['A','B'], 'comp': fls.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0']-200)},
       {'nodes': ['B','C'], 'comp': fls.getComp(comp='Tube', L=100, D=50)},

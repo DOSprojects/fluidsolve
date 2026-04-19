@@ -38,6 +38,10 @@ The parser is intentionally lightweight and expression-oriented, which keeps
 catalogue searches readable while still supporting practical filtering logic.
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
 import os
@@ -167,7 +171,7 @@ class Catalogue ():
       items = cat.searchInLibrary(lib, 'WT >= 2 AND DN < 80')
     '''
     if isinstance(lib, str):
-        lib = [lib]
+      lib = [lib]
     # tokenize
     hcriteria = criteria.replace('(', ' ( ').replace(')', ' ) ')
     tokens = hcriteria.split()
@@ -229,7 +233,7 @@ class Catalogue ():
         if token == '(':
           stack.append(self._parseExpression(tokens))
         elif token == ')':
-            break
+          break
         elif token.upper() == 'AND':
           stack.append('AND')
         elif token.upper() == 'OR':
@@ -264,7 +268,7 @@ class Catalogue ():
         stack[i - 1:i + 2] = [{'OR': [left, right]}]
         i = 0  # Restart to handle nested ORs
       else:
-          i += 1
+        i += 1
     return stack[0]
 
   def _evalLibExpression(self, expr: str, values: list, matchcase: bool=True) -> bool:
@@ -326,41 +330,40 @@ class Catalogue ():
       raise ValueError(f'Invalid atomic criterion: {atom}')
 
     def match(atom: Any) -> Any:
-        field, op_str, val = parseCriterion(atom)
-        if field not in rec:
-            return False
-        rec_val = rec[field]
-        # Try to cast criterion value to the record value type.
-        try:
-            if isinstance(rec_val, (int, float)):
-                val_cast = type(rec_val)(val)
-            else:
-                val_cast = val
-        except Exception:
-            val_cast = val
-        if not matchcase and isinstance(rec_val, str) and isinstance(val_cast, str):
-            rec_val = rec_val.lower()
-            val_cast = val_cast.lower()
-        return op_map[op_str](rec_val, val_cast)
+      field, op_str, val = parseCriterion(atom)
+      if field not in rec:
+        return False
+      rec_val = rec[field]
+      # Try to cast criterion value to the record value type.
+      try:
+        if isinstance(rec_val, (int, float)):
+          val_cast = type(rec_val)(val)
+        else:
+          val_cast = val
+      except Exception:
+        val_cast = val
+      if not matchcase and isinstance(rec_val, str) and isinstance(val_cast, str):
+        rec_val = rec_val.lower()
+        val_cast = val_cast.lower()
+      return op_map[op_str](rec_val, val_cast)
 
     def evalExpr(expr: Any) -> Any:
-        if isinstance(expr, str):
-            return match(expr)
-        if 'AND' in expr:
-            return all(evalExpr(sub) for sub in expr['AND'])
-        elif 'OR' in expr:
-            return any(evalExpr(sub) for sub in expr['OR'])
-        elif 'NOT' in expr:
-            return not evalExpr(expr['NOT'])
-        raise ValueError(f'Invalid expression format {expr}')
+      if isinstance(expr, str):
+        return match(expr)
+      if 'AND' in expr:
+        return all(evalExpr(sub) for sub in expr['AND'])
+      elif 'OR' in expr:
+        return any(evalExpr(sub) for sub in expr['OR'])
+      elif 'NOT' in expr:
+        return not evalExpr(expr['NOT'])
+      raise ValueError(f'Invalid expression format {expr}')
 
     op_map = {
-        '=': eq,
-        '!=': ne,
-        '<': lt,
-        '>': gt,
-        '<=': le,
-        '>=': ge
+      '=': eq,
+      '!=': ne,
+      '<': lt,
+      '>': gt,
+      '<=': le,
+      '>=': ge
     }
-    
     return evalExpr(expr)

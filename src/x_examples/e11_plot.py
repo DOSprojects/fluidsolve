@@ -4,17 +4,29 @@
   Interactive Q-H plotting example with one pump and one system.
   Sliders modify pipe geometry and pump speed in real time.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # GLOBALS
-#******************************************************************************
+# =============================================================================
+system = None
+pump   = None
+plt    = None
+
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
 def fun1(value):
   '''Update system pipe length from slider input.'''
   system.getComp(0)['comp'].L = value
@@ -30,9 +42,9 @@ def fun3(value):
   pump.speed = value
   plt.updateData()
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   fls.initFluidsolve(prefix_wpt='p')
   pump = fls.getComp(comp='PumpCentrifugal', dataQH=fls.getPumpCurveDataText('''
@@ -53,7 +65,7 @@ if __name__ == '__main__':
   dia2 = 40
   #
   system = fls.getPath(
-    name='path 1', 
+    name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Entrance', D=dia)},
@@ -83,7 +95,7 @@ if __name__ == '__main__':
     circuits=[system],
     spoints=spts,
     wpoints=[dwpt],
-    title=f'Pumpcurve: 1 pump',
+    title='Pumpcurve: 1 pump',
     sliders=[
       dict(label='L (m)', vmin=100, vmax=800, vinit=system.getComp(0)['comp'].L.magnitude, fun=fun1),
       dict(label='D (mm)', vmin=40, vmax=100, vinit=system.getComp(0)['comp'].D.magnitude, fun=fun2),

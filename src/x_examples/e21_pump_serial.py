@@ -4,18 +4,31 @@
   Interactive Q-H plotting example for two different pumps in series.
   Sliders modify pipe dimensions and both pump speeds.
 '''
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
 
-#******************************************************************************
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # GLOBALS
-#******************************************************************************
+# =============================================================================
+system = None
+plt    = None
+pump1  = None
+pump2  = None
+pumpS  = None
+
+# =============================================================================
+# FUNCS
+# =============================================================================
 def fun1(value):
   '''Update system pipe length from slider input.'''
   system.getComp(0)['comp'].L = value
@@ -38,9 +51,9 @@ def fun4(value):
   pumpS.updateCurve()
   plt.updateData()
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   cat = fls.Catalogue()
   cat.loadAllData()
@@ -51,7 +64,7 @@ if __name__ == '__main__':
   d2 = cat.searchInLibrary(c, 'T = centrifugal AND spec = "W+ 35/35" AND impeller0 = 165 AND speed0 = 2900')
   print(d2)
   d20 = d2[0]
-  
+
   fls.initFluidsolve(prefix_wpt='p')
   pump1 = fls.getComp(comp='PumpCentrifugal', dataQH=d10['dataQH'], impeller0=d10['impeller0'], speed0=d10['speed0'])
   pump2 = fls.getComp(comp='PumpCentrifugal', dataQH=d20['dataQH'], impeller0=d20['impeller0'], speed0=d20['speed0'])
@@ -61,7 +74,7 @@ if __name__ == '__main__':
   dia2 = 40
   #
   system = fls.getPath(
-    name='path 1', 
+    name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Entrance', D=dia)},
@@ -76,10 +89,10 @@ if __name__ == '__main__':
   wpt = fls.getWpt(wpt='d', s1=pumpS, s2= system)
   #
   plt = fls.PlotQHcurve(
-    pumps=[pump1, pump2, pumpS], 
-    circuits=[system], 
-    wpoints=[wpt], 
-    title=f'Pumpcurve: 2 serial pumps',
+    pumps=[pump1, pump2, pumpS],
+    circuits=[system],
+    wpoints=[wpt],
+    title='Pumpcurve: 2 serial pumps',
     sliders=[
       dict(label='L (m)', vmin=100, vmax=800, vinit=system.getComp(0)['comp'].L.magnitude, fun=fun1),
       dict(label='D (mm)', vmin=25, vmax=65, vinit=system.getComp(0)['comp'].D.magnitude, fun=fun2),

@@ -32,6 +32,10 @@ Reference inspiration:
 https://medium.com/@basubinayak05/python-data-visualization-day-1-71334ff5044e
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
 import os
@@ -167,7 +171,7 @@ class PlotFigure:
       ]
     )
     # TODO need to be modifiable?
-    self._constrained_layout  : bool  = True
+    self._constrained_layout  : bool  = True  # pylint: disable=invalid-name
     #
     self._fig                 : Any   = None
     self._figwidgets          : Any   = None
@@ -252,12 +256,12 @@ class PlotFigure:
     return self._gs
 
   @property
-  def figure_widgets(self) -> Any:
+  def figure_widgets(self) -> Any:  # pylint: disable=invalid-name
     ''' Matplotlib Figure used for widget controls. '''
     return self._figwidgets
 
   @property
-  def gridspec_widgets(self) -> Any:
+  def gridspec_widgets(self) -> Any:  # pylint: disable=invalid-name
     ''' GridSpec used for widget controls. '''
     return self._gswidgets
 
@@ -547,7 +551,11 @@ class PlotGraph:
   def setLegend(self, **kwargs: Any) -> Any:
     '''_summary_
     '''
-    pass
+    # TODO fix this
+    #if not kwargs:
+    #  self._legend = None
+    #else:
+    #  self._legend = PlotLegend(self, **kwargs)
 
   def addCurve(self, curve: 'PlotCurve') -> int:
     ''' Register a curve and return its index.
@@ -820,7 +828,6 @@ class PlotCurve:
     '''_summary_
     '''
     #TODO
-    pass
 
   def updateData(self) -> None:
     '''_summary_
@@ -954,7 +961,6 @@ class PlotLine:
     #Axes.axhline(y=0, xmin=0, xmax=1, **kwargs)
     #Of
     #Axes.axvline(y=0, xmin=0, xmax=1, **kwargs)
-    pass
 
 # =============================================================================
 # PLOTAXIS CLASS
@@ -1363,11 +1369,11 @@ class PlotAnnotation:
         va          = self._valignment,
       ) | self._extra['main']
       toggle = 1
-      for i in range(len(self._x)):
+      for i, x_val in enumerate(self._x):
         self._annotations.append(
           ax.annotate(
             self._label[i],
-            xy=(self._x[i], self._y[i]),
+            xy=(x_val, self._y[i]),
             xytext=(self._xoffset + toggle * self._xtoggle, self._yoffset + toggle * self._ytoggle),
             **args
           )

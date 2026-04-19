@@ -176,7 +176,7 @@ def registerComps(comps: dict, raiseerror: bool=True) -> bool:
       result = False
   return result
 
-def registerAllComps(raiseerror: bool=True) -> bool:
+def registerAllComps(raiseerror: bool=True) -> bool:  # pylint: disable=unused-argument
   ''' Register all built-in component classes.
 
   Args:
@@ -217,7 +217,7 @@ def registerAllComps(raiseerror: bool=True) -> bool:
   if not registerComps({
       'Valve_NR'          : flsv.Comp_Valve_NR,
       'Valve_01'          : flsv.Comp_Valve_01,
-      'Valve_CV'          : flsv.Comp_Valve_CV,
+      'Valve_Kv'          : flsv.Comp_Valve_Kv,
       'Valve_3W'          : flsv.Comp_Valve_3W,
       'Valve_DS'          : flsv.Comp_Valve_DS,
   }):

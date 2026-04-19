@@ -27,10 +27,14 @@ Typical usage::
 The class intentionally keeps the data model compact so that materials remain
 easy to construct, inspect, and serialize as part of larger hydraulic models.
 '''
-from typing import Any
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
+from typing import Any
 # module own
 import fluidsolve.aux_tools as flsa
 import fluidsolve.medium    as flsme
@@ -77,6 +81,8 @@ class Material ():
   Returns:
     None
   '''
+  # --------------------------------------------------------------------------
+  # INITIALIZE
   def __init__(self, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
     self._mat: str = args.getArg(
@@ -132,6 +138,8 @@ class Material ():
       ]
     )
 
+  # --------------------------------------------------------------------------
+  # PROPERTIES
   @property
   def name(self) -> str:
     ''' Name property.
@@ -149,7 +157,15 @@ class Material ():
       value (str): Name.
     '''
     self._name = value
-    self._updateProduct()
+
+  @property
+  def cmat(self) -> str:
+    ''' underlying material object.
+
+    Returns:
+      Any: cmat property.
+    '''
+    return self._cmat
 
   @property
   def T(self) -> Quantity:
@@ -167,8 +183,7 @@ class Material ():
     Args:
       value (int | float | Quantity): temperature (default in °C).
     '''
-    flsa.toUnits(value, u.degC)
-    flsa.toUnits(value, u.degK)
+    self._T = flsa.toUnits(value, u.degK)
     self._updateProduct()
 
   @property
@@ -187,7 +202,7 @@ class Material ():
     Args:
       value (int | float | Quantity): Density (default in kg/m3).
     '''
-    flsa.toUnits(value, u.kg/u.m**3)
+    self._rho = flsa.toUnits(value, u.kg/u.m**3)
 
   @property
   def k(self) -> Quantity:
@@ -205,7 +220,7 @@ class Material ():
     Args:
       value (int | float | Quantity): Thermal conductivity (in W/m/K) property.
     '''
-    flsa.toUnits(value, u.W/u.m/u.degK)
+    self._k = flsa.toUnits(value, u.W/u.m/u.degK)
 
   @property
   def e(self) -> Quantity:
@@ -223,18 +238,12 @@ class Material ():
     Args:
       value (int | float | Quantity): Absolute roughness (epsilon) (in um) property.
     '''
-    flsa.toUnits(value, u.um)
+    self._e = flsa.toUnits(value, u.um)
 
   def _updateProduct(self) -> Any:
     ''' Update the properties from the material library.
     '''
-    if len(self._prd)>0:
-      self._cmat = None #Chemical(self._prd, P=self._p.magnitude, T=self._T.to(u.degK).magnitude)
-      self._rho  = self._cmat.rho * u.kg/u.m**3
-      self._k    = self._cmat.k * u.W/u.m/u.degK
-      self._e    = self._cmat.k * u.um
-    else:
-      self._cmat = None
+    self._cmat = None
 
   def __str__(self) -> str:
     ''' String representation
@@ -244,7 +253,7 @@ class Material ():
     '''
     return self.toString(0)
 
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     ''' String representation. Can be in more or less detail.
 
     Args:

@@ -52,9 +52,13 @@ This design keeps topology logic centralized while allowing each component
 class to own its physical constitutive behavior.
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
-from typing import Optional, Any
+from typing import Any
 import numpy as np
 from scipy.optimize import fsolve
 # module own
@@ -107,7 +111,7 @@ class Network:
     self._spanningtree      : list = []
     self._fundamentalcycles : list = []
     self._allcycles         : list = []
-    self._funcs             : dict = {'B': [], 'C': []}
+    self._funcs             : dict = {'B': np.empty((0, 0)), 'C': np.empty((0, 0))}
     self._result            : list = []
     # some calculations
     self.addComponents(components)
@@ -195,22 +199,22 @@ class Network:
       components (list): List of component dicts with keys ``comp``, ``nodes``, and optional ``sense``.
     '''
     for item in components:
-        if not isinstance(item, dict):
-            raise ValueError(f'Invalid component entry: {item}')
-        if 'comp' not in item or 'nodes' not in item:
-            raise ValueError(f'Component entry must contain "comp" and "nodes": {item}')
-        nodes = item['nodes']
-        sense = item.get('sense', +1)
-        comp = item['comp']
-        if len(nodes) != comp.nports:
-          raise ValueError(f'Node count {len(nodes)} does not match component ports {comp.nports}')
-        if sense not in (+1, -1):
-          raise ValueError(f'sense must be +1 or -1, got {sense}')
-        if not isinstance(comp, flsb.Comp_Base):
-          raise ValueError(f'Unknown component: {comp}')
-        if not isinstance(nodes, (list, tuple)):
-          raise ValueError(f'Invalid nodes: {nodes}')
-        self._components.append({'nodes': list(nodes), 'sense': sense, 'comp': comp,  })
+      if not isinstance(item, dict):
+        raise ValueError(f'Invalid component entry: {item}')
+      if 'comp' not in item or 'nodes' not in item:
+        raise ValueError(f'Component entry must contain "comp" and "nodes": {item}')
+      nodes = item['nodes']
+      sense = item.get('sense', +1)
+      comp = item['comp']
+      if len(nodes) != comp.nports:
+        raise ValueError(f'Node count {len(nodes)} does not match component ports {comp.nports}')
+      if sense not in (+1, -1):
+        raise ValueError(f'sense must be +1 or -1, got {sense}')
+      if not isinstance(comp, flsb.Comp_Base):
+        raise ValueError(f'Unknown component: {comp}')
+      if not isinstance(nodes, (list, tuple)):
+        raise ValueError(f'Invalid nodes: {nodes}')
+      self._components.append({'nodes': list(nodes), 'sense': sense, 'comp': comp,  })
     self._recalc()
 
   def calcNetwork(self, iguess: Any=1.0) -> Any:
@@ -231,15 +235,15 @@ class Network:
         res.extend((B @ Q)[:-1])
       # Loop energy equations: C @ H(Q) = 0
       if C.shape[0] > 0:
-          H = np.zeros(nseg)
-          for i, key in enumerate(seg_keys):
-              comp = self._segments[key]['comp']
-              H[i] = comp.calcH(Q[i] * u.m**3 / u.h, +1).magnitude
-          res.extend(C @ H)
+        H = np.zeros(nseg)
+        for i, key in enumerate(seg_keys):
+          comp = self._segments[key]['comp']
+          H[i] = comp.calcH(Q[i] * u.m**3 / u.h, +1).magnitude
+        res.extend(C @ H)
       return res
 
-    B = self._funcs['B']    # (n_nodes, n_segments)
-    C = self._funcs['C']    # (n_loops, n_segments)
+    B = np.asarray(self._funcs['B'])    # (n_nodes, n_segments)
+    C = np.asarray(self._funcs['C'])    # (n_loops, n_segments)
     seg_keys = list(self._segments.keys())
     nseg = len(seg_keys)
     neq = max(B.shape[0] - 1, 0) + C.shape[0]
@@ -248,12 +252,12 @@ class Network:
     x0 = np.full(nseg, iguess)
     sol, _, ier, msg = fsolve(F, x0, full_output=True)
     if ier != 1:
-        raise ValueError(msg)
+      raise ValueError(msg)
     self._result = []
     for i, key in enumerate(seg_keys):
-        Q = sol[i] * u.m**3 / u.h
-        H = self._segments[key]['comp'].calcH(Q, +1)
-        self._result.append({'segment': key, 'Q': Q, 'H': H})
+      Q = sol[i] * u.m**3 / u.h
+      H = self._segments[key]['comp'].calcH(Q, +1)
+      self._result.append({'segment': key, 'Q': Q, 'H': H})
     return self._result
 
   #----------------------------------------------------------------------------
@@ -322,7 +326,7 @@ class Network:
       if node_current == node_target:
         return []
       visited.add(node_current)
-      for seg_key, node_next, sense in self._adjacency.get(node_current, []):
+      for seg_key, node_next, _ in self._adjacency.get(node_current, []):
         if seg_key not in tree_keys:
           continue  # Only follow tree edges.
         if node_next in visited:
@@ -352,7 +356,7 @@ class Network:
       # Closing chord (always added explicitly)
       if sense > 0:
         cycle = path + [(seg_key, node_start, node_end, 1)]
-      else:  
+      else:
         cycle = path + [(seg_key, node_end, node_start, 1)]
       self._fundamentalcycles.append(self._sortCycle(cycle))
 
@@ -379,10 +383,10 @@ class Network:
           raise ValueError(f'Loop {li + 1}: segment "{seg_key}" : invalid sense {sense}')
         comp = self._segments[seg_key]['comp']
         if comp.sign > 0:
-          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Power]\n'
+          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Power]\n'  # pylint: disable=inconsistent-quotes
         if comp.sign < 0:
           has_resistance = True
-          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Resist]\n'
+          txt += f'  {"+" if sense > 0 else "-"} {comp.name} ({B} → {E}) [Resist]\n'  # pylint: disable=inconsistent-quotes
       if not has_resistance:
         raise ValueError(f'Loop {li + 1}: no resistance in loop (singular energy equation)')
     return txt + '\n'
@@ -395,15 +399,15 @@ class Network:
     seg_keys = list(self._segments.keys())
     B = np.zeros((len(nodes), len(seg_keys)))
     for j, key in enumerate(seg_keys):
-        seg = self._segments[key]
-        B[nodes.index(seg['B']), j] = -1
-        B[nodes.index(seg['E']), j] = +1
+      seg = self._segments[key]
+      B[nodes.index(seg['B']), j] = -1
+      B[nodes.index(seg['E']), j] = +1
     self._funcs['B'] = B
     # C matrix
     C = np.zeros((len(self._fundamentalcycles), len(seg_keys)))
     for i, loop in enumerate(self._fundamentalcycles):
-        for seg_key, _, _, sense in loop:
-            C[i, seg_keys.index(seg_key)] = sense
+      for seg_key, _, _, sense in loop:
+        C[i, seg_keys.index(seg_key)] = sense
     self._funcs['C'] = C
     #print(self.format_BC_matrix())
 
@@ -524,7 +528,7 @@ class Network:
         f"{comp_name:<{comp_w}} ({comp_type:<{type_w}}) "
         f"ports: {seg['pB']} → {seg['pE']}\n"
       )
-    return txt + "\n"
+    return txt + '\n'
 
   def functionString(self) -> str:
     ''' Format incidence matrices B and C for display.

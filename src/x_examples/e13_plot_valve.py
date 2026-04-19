@@ -4,17 +4,29 @@
   Static Q-H plotting example.
   Displays one pump curve together with one system curve.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
+# GLOBALS
+# =============================================================================
+system = None
+plt    = None
+pump   = None
+
+# =============================================================================
 # FUNCS
-#******************************************************************************
+# =============================================================================
 def fun1(value):
   '''Update system pipe length from slider input.'''
   system.getComp(0)['comp'].L = value
@@ -30,9 +42,9 @@ def fun3(value):
   system.getComp(1)['comp'].state = value
   plt.updateData()
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   pump = fls.getComp(comp='PumpCentrifugal', dataQH=fls.getPumpCurveDataText('''
     3.1843575418994416, 36.22969837587006
@@ -53,7 +65,7 @@ if __name__ == '__main__':
   dia2 = 40
   #
   system = fls.getPath(
-    name='path 1', 
+    name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Valve_01', D=dia, state=1)},
@@ -65,7 +77,7 @@ if __name__ == '__main__':
     pumps=[pump],
     circuits=[system],
     wpoints=[wpt],
-    title=f'Pumpcurve and system curve with valve',
+    title='Pumpcurve and system curve with valve',
     sliders=[
       dict(label='L (m)', vmin=100, vmax=800, vinit=system.getComp(0)['comp'].L.magnitude, fun=fun1),
       dict(label='P speed (rpm)', vmin=1450, vmax=2900, vinit=2900, fun=fun2),

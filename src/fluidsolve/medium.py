@@ -34,10 +34,14 @@ References:
 * https://thermo.readthedocs.io/thermo.chemical.html
 * https://pint.readthedocs.io/en/stable/
 '''
-from typing import Any
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
+from typing import Any
 import fluids.units         as fu
 from pint                   import _DEFAULT_REGISTRY as pint_u
 from pint                   import Quantity as pint_q
@@ -95,6 +99,8 @@ class Medium ():
   Returns:
     None
   '''
+  # --------------------------------------------------------------------------
+  # INITIALIZE
   def __init__(self, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
     self._prd: str = args.getArg(
@@ -130,12 +136,12 @@ class Medium ():
     )
     # override rho, mu, k
     # update the product with this conditions
-    self._rho_override = 'rho' in kwargs
-    self._mu_override  = 'mu' in kwargs
-    self._k_override   = 'k' in kwargs
+    self._rho_override = 'rho' in kwargs  # pylint: disable=invalid-name
+    self._mu_override  = 'mu' in kwargs  # pylint: disable=invalid-name
+    self._k_override   = 'k' in kwargs  # pylint: disable=invalid-name
     self._updateProduct()
     if (self._cprd is None and not (self._rho_override and self._mu_override and self._k_override)):
-      raise ValueError(f'Medium must have a valid prd or have a rho, mu and k')
+      raise ValueError('Medium must have a valid prd or have a rho, mu and k')
     if self._rho_override:
       self._rho: Quantity = args.getArg(
         'rho',
@@ -160,8 +166,9 @@ class Medium ():
           flsa.vFun.tounits(u.W/u.m/u.degK)
         ]
       )
-  
 
+  # --------------------------------------------------------------------------
+  # PROPERTIES
   @property
   def name(self) -> str:
     ''' Name property.
@@ -180,6 +187,15 @@ class Medium ():
     '''
     self._name = value
     self._updateProduct()
+
+  @property
+  def cprd(self) -> str:
+    ''' underlying chemical object.
+
+    Returns:
+      Any: cprd property.
+    '''
+    return self._cprd
 
   @property
   def T(self) -> Quantity:
@@ -297,7 +313,7 @@ class Medium ():
     '''
     return self.toString(0)
 
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     ''' Return string representation.
 
     Args:

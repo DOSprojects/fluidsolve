@@ -4,17 +4,22 @@
   Working-point example in the Q-H plane.
   Computes the operating point from a pump and a system path.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve   as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   pump = fls.getComp(comp='PumpCentrifugal', dataQH=fls.getPumpCurveDataText('''
     3.1843575418994416, 36.22969837587006
@@ -36,6 +41,6 @@ if __name__ == '__main__':
   #
   wpt = fls.WpointDyn(s1=pump, s2=system)
   #
-  print (f'Pump H: {pump._dataH}')
-  print (f'Pump Q: {pump._dataQ}')
+  print (f'Pump H: {pump.dataH}')
+  print (f'Pump Q: {pump.dataQ}')
   print (f'Operating point: {wpt}')

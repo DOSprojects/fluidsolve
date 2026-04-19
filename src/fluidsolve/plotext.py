@@ -32,6 +32,10 @@ For generic figure/canvas mechanics, this module builds on ``plotlib`` and
 adds hydraulic-specific composition rules on top.
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
 from typing                   import Any, Optional
@@ -221,10 +225,8 @@ class PlotQHcurve:
         color='lightblue', hovercolor='yellow'
       )
       self._buttonreset = flsp.PlotButton(self._fig, **buttonreset_pars)
-      for i in range(len(sliders)):
-        slider_pars =  flsa.prepareArgs(
-          r = i+1, c = '0:9',
-        )  | sliders[i]
+      for i, slider in enumerate(sliders):
+        slider_pars =  flsa.prepareArgs(r=i+1, c='0:9')  | slider
         self._sliders.append(flsp.PlotSlider(self._fig, **slider_pars))
     # local data
     self._curvepumps      : dict = []
@@ -276,7 +278,7 @@ class PlotQHcurve:
       self._calcAndUpdate()
       #TODO set axis, grid and labels and limits
       self._fig.prepareShow()
-    self.prepare = False
+    self._prepare = False
 
   def show(self) -> None:
     ''' Prepare and display the plot. '''
@@ -288,10 +290,9 @@ class PlotQHcurve:
 
         Q is in m3/h and H in m; all values are passed as bare magnitudes.
     '''
-    for i in range(len(self._pumps)):
-      pump = self._pumps[i]
+    for i, pump in enumerate(self._pumps):
       curve = self._curvepumps[i]
-      Qpts_p_mag = np.linspace(pump._Qb.magnitude, pump._Qe.magnitude, self._npts)
+      Qpts_p_mag = np.linspace(pump.Qb.magnitude, pump.Qe.magnitude, self._npts)
       Hpts_p_mag = pump.calcH(Qpts_p_mag, 1).magnitude
       ptrim = np.argmax(Hpts_p_mag<=0)
       if ptrim>0:
@@ -300,14 +301,12 @@ class PlotQHcurve:
       curve.x = Qpts_p_mag
       curve.y = Hpts_p_mag
     Qpts_c_mag = np.linspace(0.001, self._Qmax, self._npts)
-    for i in range(len(self._circuits)):
-      circuit = self._circuits[i]
+    for i, circuit in enumerate(self._circuits):
       curve = self._curvecircuits[i]
       Hpts_c_mag = abs(circuit.calcH(Qpts_c_mag, 1).magnitude)
       curve.x =Qpts_c_mag
       curve.y =Hpts_c_mag
-    for i in range(len(self._wpoints)):
-      wpoint = self._wpoints[i]
+    for i, wpoint in enumerate(self._wpoints):
       curve = self._curvewpts[i]
       annotation = self._annotationwpts[i]
       wpoint.update()
@@ -316,8 +315,7 @@ class PlotQHcurve:
       annotation.x =[wpoint.Qmag]
       annotation.y =[wpoint.Hmag]
       annotation.label = [wpoint.name]
-    for i in range(len(self._spoints)):
-      spoint = self._spoints[i]
+    for i, spoint in enumerate(self._spoints):
       curve = self._curvespts[i]
       annotation = self._annotationspts[i]
       spoint.update()
@@ -327,7 +325,7 @@ class PlotQHcurve:
       annotation.y =[spoint.Hmag]
       annotation.label = [spoint.name]
 
-  def _resetControls(self, event: Any) -> Any:
+  def _resetControls(self, event: Any) -> Any:  # pylint: disable=unused-argument
     ''' Reset all slider widgets to their initial values. '''
     for slider in self._sliders:
       slider.widget.reset()

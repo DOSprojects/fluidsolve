@@ -37,6 +37,10 @@ Use ``Path`` when a full graph-based network is unnecessary and a deterministic
 series model is sufficient.
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
 from typing import Optional, Any
@@ -70,7 +74,8 @@ class Path(flsb.Comp_Base):
 
   # --------------------------------------------------------------------------
   # INITIALIZE
-  def __init__(self, **kwargs: Any) -> None:
+  # Path intentionally does not rely on Comp_Base.__init__ state.
+  def __init__(self, **kwargs: Any) -> None:  # pylint: disable=super-init-not-called
     args_in = flsa.GetArgs(kwargs)
     self._name: str = args_in.getArg(
       'name',
@@ -194,7 +199,7 @@ class Path(flsb.Comp_Base):
       P += item['comp'].calcP(Q, item['sense']*sense, item['pin'], item['pout'])
     return P
 
-  def calcHprofile(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2, incr: bool=False) -> Any:
+  def calcHprofile(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2, incr: bool=False) -> Any:  # pylint: disable=unused-argument
     ''' Build a list of working points over the path.
 
     Args:
@@ -243,7 +248,7 @@ class Path(flsb.Comp_Base):
     txt += ' Components:\n'
     txt += self.componentsString()
     if detail:
-        txt += f' Count: {len(self._items)}\n'
+      txt += f' Count: {len(self._items)}\n'
     return txt
 
   def componentsString(self) -> str:
@@ -268,7 +273,6 @@ class Path(flsb.Comp_Base):
         f'{comp_name:<{name_w}} '
         f'({comp_type:<{type_w}}) '
         f'dir: {dir_txt} '
-        f'ports: {item["pin"]} -> {item["pout"]}\n'
+        f'ports: {item["pin"]} -> {item["pout"]}\n'  # pylint: disable=inconsistent-quotes
       )
     return txt + '\n'
-  

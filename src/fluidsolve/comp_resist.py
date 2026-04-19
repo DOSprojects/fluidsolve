@@ -49,7 +49,7 @@ Example::
 
   comp = Comp_Hstatic(Hs_pos=3 * u.m)
   head = comp.calcH(1.2 * u.m**3 / u.h, sense=1)
-  
+
 The sign conventions in this module are chosen to stay consistent with the
 rest of fluidsolve, especially when the same component is traversed in either
 direction during network solving.
@@ -58,10 +58,16 @@ For advanced usage, several classes expose helper methods for coefficient
 evaluation, making it easier to calibrate components from measured data or
 catalogue values before running a network solve.
 '''
-from typing import Any
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pyright: reportAttributeAccessIssue=false
+# pylint: disable=no-member
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
+from typing import Any
 import numpy as np
 from scipy.optimize import fsolve
 import fluids.units as fu
@@ -78,7 +84,7 @@ Quantity = flsme.Quantity  # type: ignore[misc]
 # =============================================================================
 # STATIC HEIGHT
 # =============================================================================
-class Comp_Hstatic(flsb.Comp_Base):
+class Comp_Hstatic(flsb.Comp_Base):  # pylint: disable=invalid-name
   ''' Hydraulic component representing fixed static head.
   Can be a pressure source (+) or a resistance term (-).
 
@@ -95,6 +101,9 @@ class Comp_Hstatic(flsb.Comp_Base):
   # --------------------------------------------------------------------------
   # INITIALIZE
   def __init__(self, **kwargs: Any) -> Any:
+    # reservation for child classes
+    self.L = None
+    self.D = None
     # arguments
     args_in = flsa.GetArgs(kwargs)
     Hs_pos = args_in.getArg(
@@ -132,7 +141,7 @@ class Comp_Hstatic(flsb.Comp_Base):
       value (int | float | Quantity): Static Head (default in m).
     '''
     self._Hs = flsa.toUnits(value, u.m)
-  
+
   def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     '''
     Static head contribution.
@@ -153,14 +162,14 @@ class Comp_Hstatic(flsb.Comp_Base):
     '''
     sdetail = detail // 10
     txt = super().toString(sdetail) + '\n'
-    if (self._Hs is not None):
+    if self._Hs is not None:
       txt += f' Hs:{self._Hs:.2f~P} '
     return txt
 
 # =============================================================================
 # GENERIC APPENDAGE
 # =============================================================================
-class Comp_Appendage(flsb.Comp_Base):
+class Comp_Appendage(flsb.Comp_Base):  # pylint: disable=invalid-name
   ''' Generic resistance component class.
 
   Args:
@@ -180,6 +189,11 @@ class Comp_Appendage(flsb.Comp_Base):
   def __init__(self, **kwargs: Any) -> Any:
     # base class init
     super().__init__(**kwargs)
+    # Preserve child-provided geometry when set before super().__init__.
+    if not hasattr(self, '_L'):
+      self._L = None
+    if not hasattr(self, '_D'):
+      self._D = None
     # internal variable
     self._K = 0.0
 
@@ -200,23 +214,34 @@ class Comp_Appendage(flsb.Comp_Base):
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:
+  def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:  # pylint: disable=unused-argument
     '''
     Head loss coefficient.
     Override in subclasses.
     '''
     return 0.0
 
-  def calcH(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> Quantity:
+  def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+    '''Calculate head loss from loss coefficient and flow velocity.
+
+    Args:
+      Q (Quantity): Flow rate.
+      sense (int, optional): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      Quantity: Head loss in equivalent meters of fluid.
+    '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     return flsu.KtoH(self.calcK(lQ, sense, pin, pout), flsu.Qtov(lQ, self._D)) * self._sign
 
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     sdetail = detail // 10
     txt = super().toString(sdetail) + '\n'
-    if hasattr(self, '_L') and (self._L > 0):
+    if (self._L is not None) and (self._L > 0):
       txt += f' L:{self._L:.2f~P} '
-    if hasattr(self, '_D') and (self._D > 0):
+    if (self._D is not None) and (self._D > 0):
       txt += f' D:{self._D:.2f~P} '
     if hasattr(self, '_Hs'):
       txt += f' Hs:{self._Hs:.2f~P} '
@@ -227,7 +252,7 @@ class Comp_Appendage(flsb.Comp_Base):
 # =============================================================================
 # STRAIGHT TUBE
 # =============================================================================
-class Comp_Tube(Comp_Appendage):
+class Comp_Tube(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Straight pipe component with friction and static head.
 
   Args:
@@ -338,11 +363,11 @@ class Comp_Tube(Comp_Appendage):
     '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
-    fd = fu.friction_factor(Re, eD=(self._e/self._D))
+    fd = fu.friction_factor(Re, eD=self._e/self._D)
     self._K = (fd * self._L / self._D).to_base_units()
     return self._K
 
-  def calcH(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> Quantity:
+  def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     ''' Calculate head loss in equivalent meters of fluid.
 
     Returns:
@@ -357,7 +382,7 @@ class Comp_Tube(Comp_Appendage):
 # =============================================================================
 # BEND
 # =============================================================================
-class Comp_Bend(Comp_Appendage):
+class Comp_Bend(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Hydraulic component representing a pipe bend.
 
   Args:
@@ -498,13 +523,13 @@ class Comp_Bend(Comp_Appendage):
     '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
-    fd = fu.friction_factor(Re, eD=(self._e/self._D))
+    fd = fu.friction_factor(Re, eD=self._e/self._D)
     return float(self._n) * fu.bend_rounded(Di=self._D, angle=self._A, fd=fd, bend_diameters=self._R)
 
 # =============================================================================
 # LONG BEND
 # =============================================================================
-class Comp_BendLong(Comp_Appendage):
+class Comp_BendLong(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Hydraulic component representing a pipe bend.
 
   Args:
@@ -580,7 +605,7 @@ class Comp_BendLong(Comp_Appendage):
 # =============================================================================
 # PIPE ENTRANCE - EXIT
 # =============================================================================
-class Comp_Entrance(Comp_Appendage):
+class Comp_Entrance(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Pipe entrance (or exit under reversed flow) component.
 
   Args:
@@ -608,6 +633,17 @@ class Comp_Entrance(Comp_Appendage):
   # --------------------------------------------------------------------------
   # PHYSICS
   def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:
+    '''Calculate entrance or exit loss coefficient.
+
+    Args:
+      Q (Quantity): Flow rate.
+      sense (int): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      float: Loss coefficient for the active flow direction.
+    '''
     if (sense > 0 and pin < pout) or (sense < 0 and pin > pout):
       return fu.entrance_sharp()
     else:
@@ -616,7 +652,7 @@ class Comp_Entrance(Comp_Appendage):
 # =============================================================================
 # PIPE SHARP REDUCTION - DIFFUSOR
 # =============================================================================
-class Comp_SharpReduction(Comp_Appendage):
+class Comp_SharpReduction(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Pipe contraction (or diffuser under reversed flow) component.
 
   Args:
@@ -715,12 +751,23 @@ class Comp_SharpReduction(Comp_Appendage):
   # --------------------------------------------------------------------------
   # PHYSICS
   def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:
+    '''Calculate contraction or diffuser loss coefficient.
+
+    Args:
+      Q (Quantity): Flow rate.
+      sense (int): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      float: Loss coefficient for the active flow direction.
+    '''
     if (sense > 0 and pin < pout) or (sense < 0 and pin > pout):
       return float(self._n) * fu.contraction_sharp(Di1=self._D1, Di2=self._D2)
     else:
       return float(self._n) * fu.diffuser_sharp(Di1=self._D2, Di2=self._D1)
 
-  def calcH(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> Quantity:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     ''' Calculate head loss in equivalent meters of fluid.
 
     Returns:
@@ -736,7 +783,7 @@ class Comp_SharpReduction(Comp_Appendage):
 # =============================================================================
 # PIPE CONICAL REDUCTION - DIFFUSOR
 # =============================================================================
-class Comp_ConicalReduction(Comp_Appendage):
+class Comp_ConicalReduction(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Conical contraction (or diffuser under reversed flow) component.
 
   Args:
@@ -857,17 +904,17 @@ class Comp_ConicalReduction(Comp_Appendage):
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     if (sense > 0 and pin < pout) or (sense < 0 and pin > pout):
       Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D1), D=self._D1, rho=self._medium.rho, mu=self._medium.mu)
-      fd = fu.friction_factor(Re, eD=(self._e/self._D1))
+      fd = fu.friction_factor(Re, eD=self._e/self._D1)
       return float(self._n) * fu.fittings.contraction_conical(Di1=self._D1, Di2=self._D2, fd=fd, l=self._L)
     else:
       Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D2), D=self._D2, rho=self._medium.rho, mu=self._medium.mu)
-      fd = fu.friction_factor(Re, eD=(self._e/self._D2))
+      fd = fu.friction_factor(Re, eD=self._e/self._D2)
       return float(self._n) * fu.fittings.diffuser_conical(Di1=self._D2, Di2=self._D1, l=self._L, fd=fd)
 
 # =============================================================================
 # PIPE BEVELED ENTRANCE - EXIT
 # =============================================================================
-class C_EntranceBeveled(Comp_Appendage):
+class C_EntranceBeveled(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Hydraulic component representing a beveled entrance.
   Reverse-flow behavior is not implemented.
 
@@ -930,7 +977,7 @@ class C_EntranceBeveled(Comp_Appendage):
 # =============================================================================
 # PLATE HEAT EXCHANGER (PHE)
 # =============================================================================
-class Comp_PHE(Comp_Appendage):
+class Comp_PHE(Comp_Appendage):  # pylint: disable=invalid-name
   ''' Hydraulic component representing a plate heat exchanger (PHE).
 
   Args:
@@ -1015,7 +1062,7 @@ class Comp_PHE(Comp_Appendage):
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcK(self, Q: int | float | Quantity, flowdir: int, pin: int=1, pout:int=2) -> float:
+  def calcK(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> float:
     ''' Calculate head loss coefficient K.
         Speed is a derived value calculated using Dpoort.
 
@@ -1027,9 +1074,9 @@ class Comp_PHE(Comp_Appendage):
     '''
     lQ = Q.to(u.m**3/u.h) if isinstance(Q, Quantity) else Q * u.m**3/u.h
     v = lQ / (self._Dpoort**2*np.pi/4)
-    return (self.calcH(lQ, flowdir, pin, pout) * 2 * flsme.CTE_G / (v**2)).to_base_units().magnitude
+    return (self.calcH(lQ, sense, pin, pout) * 2 * flsme.CTE_G / (v**2)).to_base_units().magnitude
 
-  def calcH(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> float:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> float:
     ''' Calculate head loss in equivalent meters of fluid.
 
     Args:
@@ -1079,7 +1126,7 @@ class Comp_PHE(Comp_Appendage):
 # =============================================================================
 # SERIAL COMBINATION OF COMPONENTS
 # =============================================================================
-class Comp_Serial (Comp_Appendage):
+class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
   ''' Serial combination of components.
 
   Args:
@@ -1129,16 +1176,38 @@ class Comp_Serial (Comp_Appendage):
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcH(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> Any:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Any:
+    '''Calculate total head change across all series components.
+
+    Args:
+      Q (int | float | Quantity): Flow rate (default in m3/h).
+      sense (int, optional): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      Any: Summed head change across all components.
+    '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     return sum([item.calcH(lQ, sense, pin, pout) for item in self._items])
 
   def calcHprofile(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2, incr: bool=False) -> Any:
+    '''Calculate per-component head profile for a given flow.
+
+    Args:
+      Q (int | float | Quantity): Flow rate (default in m3/h).
+      sense (int): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+      incr (bool, optional): If True, accumulate head over the series.
+
+    Returns:
+      Any: List of working-point entries for each component and total.
+    '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     pts = []
     H = 0 *u.m
-    for i in range(len(self._items)):
-      item = self._items[i]
+    for i, item in enumerate(self._items):
       if incr:
         H = H + item.calcH(lQ, sense, pin, pout)
       else:
@@ -1161,14 +1230,14 @@ class Comp_Serial (Comp_Appendage):
     '''
     sdetail = detail // 10
     txt = super().toString(sdetail) + '\n'
-    for i in range(len(self._items)):
-      txt += f' {i}: {self._items[i]}\n'
+    for i, item in enumerate(self._items):
+      txt += f' {i}: {item}\n'
     return txt
 
 # =============================================================================
 # PARALLEL COMBINATION OF COMPONENTS
 # =============================================================================
-class Comp_Parallel (Comp_Appendage):
+class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
   ''' Parallel combination of components.
 
   Args:
@@ -1253,7 +1322,18 @@ class Comp_Parallel (Comp_Appendage):
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcH(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> Any:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Any:
+    '''Solve branch flows and return common head loss for parallel components.
+
+    Args:
+      Q (int | float | Quantity): Total flow rate (default in m3/h).
+      sense (int, optional): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      Any: Common head value for the parallel block.
+    '''
 
     def F(Q: list[float], Qtot: int | float) -> list[float]:
       ''' fsolve system of equations.
@@ -1293,8 +1373,8 @@ class Comp_Parallel (Comp_Appendage):
     # process result
     self._Q = result *u.m**3/u.h
     self._H = [0.0] * n_items
-    for i in range(len(self._items)):
-      self._H[i] = self._items[i].calcH(result[i], sense, pin, pout)
+    for i, item in enumerate(self._items):
+      self._H[i] = item.calcH(result[i], sense, pin, pout)
     return self._H[0]
 
   # --------------------------------------------------------------------------
@@ -1310,14 +1390,14 @@ class Comp_Parallel (Comp_Appendage):
     '''
     sdetail = detail // 10
     txt = super().toString(sdetail) + '\n'
-    for i in range(len(self._items)):
-      txt += f' {i}: {self._items[i]}\n'
+    for i, item in enumerate(self._items):
+      txt += f' {i}: {item}\n'
     return txt
 
 # =============================================================================
 # PARALLEL COMBINATION OF EXACT 2 COMPONENTS
 # =============================================================================
-class Comp_Parallel2 (Comp_Appendage):
+class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
   ''' Parallel combination of exactly two components.
 
   Args:
@@ -1405,7 +1485,18 @@ class Comp_Parallel2 (Comp_Appendage):
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcH(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2) -> Any:
+  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Any:
+    '''Solve flow split for two parallel branches and return common head.
+
+    Args:
+      Q (int | float | Quantity): Total flow rate (default in m3/h).
+      sense (int, optional): Flow direction indicator.
+      pin (int, optional): Inlet port index.
+      pout (int, optional): Outlet port index.
+
+    Returns:
+      Any: Common head value for the two-branch parallel block.
+    '''
 
     def F(Q1: float, Qtot: int | float) -> Any:
       ''' fsolve equation for two parallel branches.
@@ -1444,6 +1535,6 @@ class Comp_Parallel2 (Comp_Appendage):
     '''
     sdetail = detail // 10
     txt = super().toString(sdetail) + '\n'
-    for i in range(len(self._items)):
-      txt += f' {i}: {self._items[i]}\n'
+    for i, item in enumerate(self._items):
+      txt += f' {i}: {item}\n'
     return txt

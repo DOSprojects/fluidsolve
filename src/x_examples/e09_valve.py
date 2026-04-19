@@ -2,22 +2,28 @@
   e09_basic.py
 
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # FUNCS
-#******************************************************************************
-def PrintIt(pts1, pts2, title1, title2):
+# =============================================================================
+def PrintIt(pts1, pts2, title1, title2) -> None:
+  '''Print paired head-loss profiles side by side for comparison.'''
   comp_w = 16
   h_w = 16
-  print(f'{"Comp":<{comp_w}}{title1:>{h_w}}{title2:>{h_w}}')
-  print(f'{"-" * comp_w}{"-" * h_w}{"-" * h_w}')
+  print(f'{"Comp":<{comp_w}}{title1:>{h_w}}{title2:>{h_w}}')  # pylint: disable=inconsistent-quotes
+  print(f'{"-" * comp_w}{"-" * h_w}{"-" * h_w}')  # pylint: disable=inconsistent-quotes
   n_rows = max(len(pts1), len(pts2))
   for i in range(n_rows):
     p1 = pts1[i] if i < len(pts1) else None
@@ -26,18 +32,18 @@ def PrintIt(pts1, pts2, title1, title2):
     h1 = f'{p1.H.to(u.m).magnitude:.2f} m' if p1 is not None else ''
     h2 = f'{p2.H.to(u.m).magnitude:.2f} m' if p2 is not None else ''
     print(f'{comp:<{comp_w}}{h1:>{h_w}}{h2:>{h_w}}')
-  print(f'{"-" * comp_w}{"-" * h_w}{"-" * h_w}\n')
+  print(f'{"-" * comp_w}{"-" * h_w}{"-" * h_w}\n')  # pylint: disable=inconsistent-quotes
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   dia = 80 *u.mm
   L = 20 * u.m
   Q = 40 * u.m**3/u.h
   # NR valve
   path1 = fls.getPath(
-    name='path 1', 
+    name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Valve_NR', D=dia, state=1)},
@@ -50,7 +56,7 @@ if __name__ == '__main__':
   PrintIt(path1_ptsA, path1_ptsB, '--->', '<---')
   # on off valve
   path2 = fls.getPath(
-    name='path 2', 
+    name='path 2',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Valve_01', D=dia, state=1)},
@@ -63,20 +69,20 @@ if __name__ == '__main__':
   PrintIt(path2_ptsA, path2_ptsB, 'V on', 'V off')
   # CV valve
   path3 = fls.getPath(
-    name='path 3', 
+    name='path 3',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
-      {'comp': fls.getComp(comp='Valve_CV', D=dia, state=6)},
+      {'comp': fls.getComp(comp='Valve_Kv', D=dia, Kvs=25, state=0.1)},
     ],
   )
   path3_ptsA = path3.calcHprofile(Q)
-  path3.getComp(1)['comp'].state = 12
+  path3.getComp(1)['comp'].state = 0.6
   path3_ptsB = path3.calcHprofile(Q)
-  print(f'Path with CV valve (Q = {Q:.2f~P}):')
-  PrintIt(path3_ptsA, path3_ptsB, 'CV=2', 'CV=4')
+  print(f'Path with Kv valve (Q = {Q:.2f~P}):')
+  PrintIt(path3_ptsA, path3_ptsB, 'out=0.1', 'out=0.6')
   # 3W valve
   path4 = fls.getPath(
-    name='path 4', 
+    name='path 4',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Valve_3W', D=dia, state=1), 'pin':1, 'pout':2},
@@ -105,7 +111,7 @@ if __name__ == '__main__':
   PrintIt(path4_ptsE, path4_ptsF, 'rust', 'actief')
   # DS valve
   path5 = fls.getPath(
-    name='path 5', 
+    name='path 5',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
       {'comp': fls.getComp(comp='Valve_DS', D=dia, state=1), 'pin':1, 'pout':3},

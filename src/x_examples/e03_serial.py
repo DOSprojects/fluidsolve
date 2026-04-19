@@ -4,29 +4,34 @@
   Demonstrates serial and parallel composition components.
   Includes generic Parallel and the dedicated Parallel2 variant.
 '''
-#******************************************************************************
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pylint: disable=no-member,no-name-in-module,invalid-name,wrong-import-position
+
+# =============================================================================
 # EXTERNAL MODULE REFERENCES
-#******************************************************************************
+# =============================================================================
 import fluidsolve as fls
 # UNITS
 u         = fls.unitRegistry
 Quantity  = fls.Quantity  # type: ignore[misc]
 
-#******************************************************************************
+# =============================================================================
 # FUNCS
-#******************************************************************************
-def PrintIt(comp, Q):
+# =============================================================================
+def PrintIt(comp, flow):
   '''Print component hydraulic details for a given flow.'''
   print(f'{comp}')
   try:
-    print(f'K={comp.calcK(Q, 1).magnitude:.2f}')
-  except:
-    print('K= not available') 
-  print(f'with Q={Q:.2f~P}: H={comp.calcH(Q, 1):.2f~P} P={comp.calcP(Q, 1):.2f~P}')
+    print(f'K={comp.calcK(flow, 1).magnitude:.2f}')
+  except Exception:
+    print('K= not available')
+  print(f'with Q={flow:.2f~P}: H={comp.calcH(flow, 1):.2f~P} P={comp.calcP(flow, 1):.2f~P}')
 
-#******************************************************************************
+# =============================================================================
 # MAIN
-#******************************************************************************
+# =============================================================================
 if __name__ == '__main__':
   mu = 0.001 * u.Pa*u.s
   rho = 1000 * u.kg/u.m**3
@@ -64,20 +69,20 @@ if __name__ == '__main__':
   print('-------------\n')
   print('Total (serial) component:')
   PrintIt(comp_serial, Q)
-  print (f'Calculate profile (Q en H after every item, individual and incremental):')
+  print ('Calculate profile (Q en H after every item, individual and incremental):')
   pts_indiv = comp_serial.calcHprofile(Q, sense=1, incr=False)
   pts_incr = comp_serial.calcHprofile(Q, sense=1, incr=True)
-  for i in range(len(pts_indiv)):
-    print(f'{pts_indiv[i]} \t\t {pts_incr[i]}')
+  for i, pt_indiv in enumerate(pts_indiv):
+    print(f'{pt_indiv} \t\t {pts_incr[i]}')
   print('-------------\n')
   print('Total (parallel) component:')
   PrintIt(comp_parallel, Q)
-  print (f'Q en H for every item:')
+  print ('Q en H for every item:')
   for i in range(len(comp_parallel.Components)):
     print(f'Component {comp_parallel.getComp(i).name}: Q={comp_parallel.getQ()[i]:.2f~P} H={comp_parallel.getH()[i]:.2f~P}')
   print('-------------\n')
   print('Total (parallel2) component:')
   PrintIt(comp_parallel2, Q)
-  print (f'Q en H for every item:')
+  print ('Q en H for every item:')
   print(f'Component {comp_parallel2.getComp(0).name}: Q={comp_parallel2.getQ()[0]:.2f~P} H={comp_parallel2.getH()[0]:.2f~P}')
   print(f'Component {comp_parallel2.getComp(1).name}: Q={comp_parallel2.getQ()[1]:.2f~P} H={comp_parallel2.getH()[1]:.2f~P}')

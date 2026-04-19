@@ -27,10 +27,16 @@ Typical usage::
 These helpers are intended as low-level building blocks used by higher-level
 objects such as components, paths, and network solvers.
 '''
-from typing import Any
+# =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+# pyright: reportAttributeAccessIssue=false
+# pylint: disable=no-member
+
 # =============================================================================
 # IMPORTS
 # =============================================================================
+from typing import Any
 import numpy                as np
 import fluids.units         as fu
 from scipy.optimize         import newton
@@ -45,9 +51,9 @@ Quantity  = flsme.Quantity  # type: ignore[misc]
 # SOME FUNCTIONS
 # =============================================================================
 def calcOrifice(**kwargs: Any) -> Any:
-  ''' This function calculates either the flow rate, the upstream pressure, 
+  ''' This function calculates either the flow rate, the upstream pressure,
       the second pressure or the orifice diameter for an orifice.
-      
+
       For details see `https://fluids.readthedocs.io/fluids.flow_meter.html`
 
   Args:
@@ -139,20 +145,20 @@ def calcOrifice(**kwargs: Any) -> Any:
     m = m_in,
     rho = medium.rho,
     mu = medium.mu,
-    k = medium._cprd.isentropic_exponent,
+    k = medium.cprd.isentropic_exponent,
     meter_type = meter_type,
     taps = orifice_taps,
-  ) 
+  )
   ans = fu.differential_pressure_meter_solver(**calc_pars)
   if d_in is None:
     return ans.to(u.mm)
-  elif d_orif is None:  
+  elif d_orif is None:
     return ans.to(u.mm)
-  elif P_in is None:  
+  elif P_in is None:
     return ans.to(u.bar)
-  elif P_out is None:  
+  elif P_out is None:
     return ans.to(u.bar)
-  elif m_in is None:  
+  elif m_in is None:
     return (ans/medium.rho).to(u.m**3/u.h)
   else:
     return ans
@@ -173,23 +179,23 @@ def calcOrifice2(circuit: Any, Q: Any, d: Any, Puit: Any=1*u.bar, meter_type: An
   '''
 
   def solverfun(beta: Any) -> Any:
-      d_orif = d * beta
-      # Solve naar upstream druk met gegeven flow en geschatte orifice diameter
-      Pcalc = fu.differential_pressure_meter_solver(D=d, D2=d_orif, P2=Puit, m=m,
-                                                    rho=circuit.rho, mu=circuit.mu, k=circuit.k, meter_type=meter_type, taps=orifice_taps)
-      # Coefficient of discharge: Cd is karakteristiek orifice; bepaalt flow drukverlies bij nozzle en orifice
-      C, _expansibility = fu.differential_pressure_meter_C_epsilon(D=d, D2=d_orif, m=m, P1=Pcalc, P2=Puit,
-                                                                  rho=circuit.rho, mu=circuit.mu, k=circuit.k, meter_type=meter_type, taps=orifice_taps)
-      # Bereken dP voor geschatte orifice diameter
-      dPcalc = fu.dP_orifice(D=d, Do=d_orif, P1=Pcalc, P2=Puit, C=C)
-      err = dPcalc - dP
-      print(f'Pcalc={Pcalc:.2f}, dPcalc={dPcalc:.4f}, err={err:.4f}, beta={beta:.4f}, C={C:.2f}')
-      return err
+    d_orif = d * beta
+    # Solve naar upstream druk met gegeven flow en geschatte orifice diameter
+    Pcalc = fu.differential_pressure_meter_solver(D=d, D2=d_orif, P2=Puit, m=m,
+                                                  rho=circuit.rho, mu=circuit.mu, k=circuit.k, meter_type=meter_type, taps=orifice_taps)
+    # Coefficient of discharge: Cd is karakteristiek orifice; bepaalt flow drukverlies bij nozzle en orifice
+    C, _expansibility = fu.differential_pressure_meter_C_epsilon(D=d, D2=d_orif, m=m, P1=Pcalc, P2=Puit,
+                                                                rho=circuit.rho, mu=circuit.mu, k=circuit.k, meter_type=meter_type, taps=orifice_taps)
+    # Bereken dP voor geschatte orifice diameter
+    dPcalc = fu.dP_orifice(D=d, Do=d_orif, P1=Pcalc, P2=Puit, C=C)
+    err = dPcalc - dP
+    print(f'Pcalc={Pcalc:.2f}, dPcalc={dPcalc:.4f}, err={err:.4f}, beta={beta:.4f}, C={C:.2f}')
+    return err
 
-  m = Q * circuit._rho
+  m = Q * circuit.rho
   H = circuit.calcH(Q)
-  dP = fu.P_from_head(head=H, rho=circuit._rho)
-  Pin = Puit + dP                                 # druk boven = druk onder + drukverlies
+  dP = fu.P_from_head(head=H, rho=circuit.rho)
+  #Pin = Puit + dP                                 # druk boven = druk onder + drukverlies
   beta = newton(solverfun, x0=0.05, tol=1E-8)
   print(f'Orifice diameter: {d*beta}')
   return d*beta

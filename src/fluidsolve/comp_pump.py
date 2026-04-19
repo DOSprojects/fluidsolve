@@ -40,6 +40,10 @@ These pump classes are typically instantiated via the core factory helpers,
 which provide consistent naming and defaults across a full hydraulic model.
 '''
 # =============================================================================
+# PYLINT DIRECTIVES
+# =============================================================================
+
+# =============================================================================
 # IMPORTS
 # =============================================================================
 from typing import Callable, List, Any
@@ -61,7 +65,7 @@ N_CURVE_POINTS = 100
 # =============================================================================
 # GENERIC PUMP
 # =============================================================================
-class Comp_Pump(flsb.Comp_Base):
+class Comp_Pump(flsb.Comp_Base):  # pylint: disable=invalid-name
   ''' Generic pump component class.
 
   Args:
@@ -304,11 +308,12 @@ class Comp_Pump(flsb.Comp_Base):
     return H * u.m
 
 
-  def calcQ(self, H: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcQ(self, H: Quantity, guess: Any=200, sense: int=1, pin: int=1, pout:int=2) -> Quantity:  # pylint: disable=unused-argument
     ''' Calculate flow rate from head.
 
     Args:
       H (int | float | Quantity): Head (default unit: m).
+      guess (Any): Unused in pump inverse curve lookup; kept for API compatibility.
       sense (int): Flow direction indicator (+1 or -1).
       pin (int): Inlet port number.
       pout (int): Outlet port number.
@@ -344,7 +349,7 @@ class Comp_Pump(flsb.Comp_Base):
 
   # --------------------------------------------------------------------------
   # REPRESENTATION
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     ''' Return string representation.
 
     Args:
@@ -361,7 +366,7 @@ class Comp_Pump(flsb.Comp_Base):
 # =============================================================================
 # CENTRIFUGAL PUMP
 # =============================================================================
-class Comp_PumpCentrifugal(Comp_Pump):
+class Comp_PumpCentrifugal(Comp_Pump):  # pylint: disable=invalid-name
   ''' Centrifugal pump component.
 
   Args:
@@ -462,7 +467,7 @@ class Comp_PumpCentrifugal(Comp_Pump):
 # =============================================================================
 # SERIAL PUMPS
 # =============================================================================
-class Comp_PumpSerial(Comp_Pump):
+class Comp_PumpSerial(Comp_Pump):  # pylint: disable=invalid-name
   ''' Pumps connected in series.
   Heads add, flow is identical.
   '''
@@ -506,11 +511,12 @@ class Comp_PumpSerial(Comp_Pump):
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     return self._funQtoH(lQ.magnitude) * u.m
 
-  def calcQ(self, H: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcQ(self, H: int | float | Quantity, guess: Any=200, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     ''' Calculate flow rate for the serial pump assembly.
 
     Args:
       H (int | float | Quantity): Head (default unit: m).
+      guess (Any): Unused; kept for API compatibility.
       sense (int): Flow direction indicator (+1 or -1).
       pin (int): Inlet port number.
       pout (int): Outlet port number.
@@ -527,11 +533,11 @@ class Comp_PumpSerial(Comp_Pump):
     ''' Update curve arrays and interpolation functions. '''
     for pump in self._pumps:
       if self._Qb is None or pump.Qb < self._Qb:
-        self._Qb = pump._Qb
+        self._Qb = pump.Qb
       if self._Qe is None or pump.Qe > self._Qe:
-        self._Qe = pump._Qe
-      if self._Qc is None or pump._Qc > self._Qc:
-        self._Qc = pump._Qc
+        self._Qe = pump.Qe
+      if self._Qc is None or pump.Qc > self._Qc:
+        self._Qc = pump.Qc
     self._dataQ =  np.linspace(start=self._Qb.magnitude, stop=self._Qe.magnitude, num=N_CURVE_POINTS, endpoint=True)
     self._dataH = sum([pump.calcH(Q=self._dataQ).magnitude for pump in self._pumps])
     self._funQtoH = interp1d(self._dataQ, self._dataH, fill_value='extrapolate')
@@ -541,7 +547,7 @@ class Comp_PumpSerial(Comp_Pump):
 
   # --------------------------------------------------------------------------
   # REPRESENTATION
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     ''' Return string representation.
 
     Args:
@@ -551,7 +557,7 @@ class Comp_PumpSerial(Comp_Pump):
       str: String representation.
     '''
     sdetail = detail // 10
-    txt = f'Serial pumps:'
+    txt = 'Serial pumps:'
     for pump in self._pumps:
       txt += f'  {pump.toString(sdetail)}'
     return txt
@@ -559,7 +565,7 @@ class Comp_PumpSerial(Comp_Pump):
 # =============================================================================
 # PARALLEL PUMPS
 # =============================================================================
-class Comp_PumpParallel(Comp_Pump):
+class Comp_PumpParallel(Comp_Pump):  # pylint: disable=invalid-name
   ''' Pumps connected in parallel.
   Flows add, head is identical.
   '''
@@ -601,11 +607,12 @@ class Comp_PumpParallel(Comp_Pump):
     lQ = flsa.toUnits(Q, u.m**3/u.h)
     return self._funQtoH(lQ.magnitude) * u.m
 
-  def calcQ(self, H: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcQ(self, H: int | float | Quantity, guess: Any=200, sense: int=1, pin: int=1, pout:int=2) -> Quantity:  # pylint: disable=unused-argument
     ''' Calculate flow rate for the parallel pump assembly.
 
     Args:
       H (int | float | Quantity): Head (default unit: m).
+      guess (Any): Unused; kept for API compatibility.
       sense (int): Flow direction indicator (+1 or -1).
       pin (int): Inlet port number.
       pout (int): Outlet port number.
@@ -623,14 +630,14 @@ class Comp_PumpParallel(Comp_Pump):
     Hmin = None
     Hmax = None
     for pump in self._pumps:
-      if self._Qb is None or pump._Qb < self._Qb:
-        self._Qb = pump._Qb
-      if self._Qe is None or pump._Qe > self._Qe:
-        self._Qe = pump._Qe
-      if self._Qc is None or pump._Qc > self._Qc:
-        self._Qc = pump._Qc
-      Hma = max(pump.calcH(Q=pump._Qb), pump.calcH(Q=pump._Qc), pump.calcH(Q=pump._Qe))
-      Hmi = min(pump.calcH(Q=pump._Qb), pump.calcH(Q=pump._Qc), pump.calcH(Q=pump._Qe))
+      if self._Qb is None or pump.Qb < self._Qb:
+        self._Qb = pump.Qb
+      if self._Qe is None or pump.Qe > self._Qe:
+        self._Qe = pump.Qe
+      if self._Qc is None or pump.Qc > self._Qc:
+        self._Qc = pump.Qc
+      Hma = max(pump.calcH(Q=pump.Qb), pump.calcH(Q=pump.Qc), pump.calcH(Q=pump.Qe))
+      Hmi = min(pump.calcH(Q=pump.Qb), pump.calcH(Q=pump.Qc), pump.calcH(Q=pump.Qe))
       if Hmin is None or Hmi < Hmin:
         Hmin = Hmi
       if Hmax is None or Hma > Hmax:
@@ -661,7 +668,7 @@ class Comp_PumpParallel(Comp_Pump):
 
   # --------------------------------------------------------------------------
   # REPRESENTATION
-  def toString(self, detail: Any=0) -> str:
+  def toString(self, detail: int=0) -> str:
     ''' Return string representation.
 
     Args:
@@ -671,7 +678,7 @@ class Comp_PumpParallel(Comp_Pump):
       str: String representation.
     '''
     sdetail = detail // 10
-    txt = f'Parallel pumps:'
+    txt = 'Parallel pumps:'
     for pump in self._pumps:
       txt += f'  {pump.toString(sdetail)}'
     return txt
