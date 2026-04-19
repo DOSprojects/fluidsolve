@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "FluidSolve"
-version = "0.8.0"
+version = "0.9.0"
 description = "Fluid Dynamics Calculations"
 authors = [{ name = "DOSprojects", email = "mail@domain.com" }]
 license = { file = "LICENSE" }

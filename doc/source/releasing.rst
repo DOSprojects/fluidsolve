@@ -53,7 +53,7 @@ From this document one can find following workflow below.
 Pre-release
 ^^^^^^^^^^^
 
-* Fill in a new version number (e.g. ``X.Y.Z``) in ``src/fluidsolve/___version.py``
+* Update version number (e.g. ``X.Y.Z``) in ``src/fluidsolve/___version.py``
 * Update `CHANGELOG.rst <../../CHANGELOG.rst>`_ with that number
 * Update `pyproject.toml <../../pyproject.toml>`_ with that number
 
