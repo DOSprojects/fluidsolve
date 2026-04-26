@@ -282,6 +282,24 @@ class Comp_Pump(flsb.Comp_Base):  # pylint: disable=invalid-name
     '''
     return self._He
 
+  @property
+  def dataH(self) -> list:
+    ''' curve H data.
+
+    Returns:
+      list: curve H data.
+    '''
+    return self._dataH
+
+  @property
+  def dataQ(self) -> list:
+    ''' curve Q data.
+
+    Returns:
+      list: curve Q data.
+    '''
+    return self._dataQ
+
   # --------------------------------------------------------------------------
   # PHYSICS
   def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
@@ -297,14 +315,21 @@ class Comp_Pump(flsb.Comp_Base):  # pylint: disable=invalid-name
     Returns:
       Quantity: Pump head (m).
     '''
-    if (sense < 0 and pin < pout) or (sense > 0 and pin > pout):
-      return 0.0 * u.m
     lQ = flsa.toUnits(Q, u.m**3/u.h).magnitude
-    H = self._funQtoH(lQ)
+    lsense = sense if pin < pout else -sense
+    # Effective flow sign in the pump's own 1->2 mounting direction.
+    flow_sign = np.sign(lQ) * lsense
+    H = self._funQtoH(np.abs(lQ))
+    #print(f'pump---{self._name}-------------------', lQ, sense, pin, pout, flow_sign, H)
     if isinstance(H, np.ndarray):
+      H = np.asarray(H, dtype=float)
+      H[flow_sign < 0] = 0
       H[H <= 0] = 0
     else:
-      H = max(0, H)
+      if flow_sign < 0:
+        H = 0
+      else:
+        H = max(0, H)
     return H * u.m
 
 
@@ -539,7 +564,7 @@ class Comp_PumpSerial(Comp_Pump):  # pylint: disable=invalid-name
       if self._Qc is None or pump.Qc > self._Qc:
         self._Qc = pump.Qc
     self._dataQ =  np.linspace(start=self._Qb.magnitude, stop=self._Qe.magnitude, num=N_CURVE_POINTS, endpoint=True)
-    self._dataH = sum([pump.calcH(Q=self._dataQ).magnitude for pump in self._pumps])
+    self._dataH = sum(pump.calcH(Q=self._dataQ).magnitude for pump in self._pumps)
     self._funQtoH = interp1d(self._dataQ, self._dataH, fill_value='extrapolate')
     self._funHtoQ = interp1d(self._dataH, self._dataQ, fill_value='extrapolate')
     # curve critical point
@@ -642,8 +667,7 @@ class Comp_PumpParallel(Comp_Pump):  # pylint: disable=invalid-name
         Hmin = Hmi
       if Hmax is None or Hma > Hmax:
         Hmax = Hma
-    if Hmin<0*u.m:
-      Hmin=0 *u.m
+    Hmin = max(Hmin, 0 * u.m)
     #self._dataH0 =  np.linspace(start=0, stop=Hm.magnitude, num=100, endpoint=True)
     self._dataH0 =  np.linspace(start=Hmin.magnitude, stop=Hmax.magnitude, num=N_CURVE_POINTS, endpoint=True)
     self._dataQ0 = np.zeros(len(self._dataH0))

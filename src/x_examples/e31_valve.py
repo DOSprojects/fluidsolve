@@ -25,56 +25,44 @@ if __name__ == '__main__':
   else:
     raise ValueError('No pump found.')
 
-  flsbuilder = fls.ComponentBuilder()
-
-
-  twvalve = flsbuilder.getComp(comp='Comp_Valve_3W', D=50)
-  net1 = flsbuilder.getNetwork(
+  valve1 = fls.getComp(comp='Valve_3W', D=50, state=1)
+  net1 = fls.getNetwork(
     name='net 1',
-    segments=[
-      ['A', 'B', flsbuilder.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0']-200), 1],
-      ['B', 'C', twvalve, 1],
-      ['C', 'A', flsbuilder.getComp(comp='Tube', L=90, D=50), 1],
-      ['B', 'D', twvalve, 2],
-      ['D', 'A', flsbuilder.getComp(comp='Tube', L=115, D=50), 1],
+    components=[
+      {'nodes': ['A','B'], 'comp': fls.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0'], speed=pr0['speed0']-200)},
+      {'nodes': ['B','C','D'], 'comp': fls.getComp(comp='Valve_3W', D=50, state=1)},
+      {'nodes': ['C','A'], 'comp': fls.getComp(comp='Tube', L=100, D=50)},
+      {'nodes': ['D','A'], 'comp': fls.getComp(comp='Tube', L=200, D=50)},
     ],
   )
+  #print(net1.toString(detail=1))
+  net1.calcNetwork()
+  print('==========================================================================')
+  print('Valve state 1: B->C open, B->D closed')
+  print(net1.resultString())
+  net1.components[1]['comp'].state = 2
+  net1.calcNetwork()
+  print('Valve state 2: B->C closed, B->D open')
+  print(net1.resultString())
+  print('==========================================================================')
 
-  dzvalve = flsbuilder.getComp(comp='Comp_Valve_ds', D=50)
-  net2 = flsbuilder.getNetwork(
+  valve2 = fls.getComp(comp='Valve_DS', D=50, state=1)
+  net2 = fls.getNetwork(
     name='net 2',
-    segments=[
-      ['A', 'B', flsbuilder.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0']-200), 1],
-      ['B', 'C', dzvalve, 1],
-      ['C', 'D', flsbuilder.getComp(comp='Tube', L=90, D=50), 1],
-      ['D', 'E', dzvalve, 2],
-      ['E', 'A', flsbuilder.getComp(comp='Tube', L=115, D=50), 1],
+    components=[
+      {'nodes': ['A','B'], 'comp': fls.getComp(comp='PumpCentrifugal', dataQH=pr0['dataQH'], impeller0=pr0['impeller0'], speed0=pr0['speed0'], speed=pr0['speed0']-200)},
+      {'nodes': ['B','C','E','D'], 'comp': fls.getComp(comp='Valve_DS', D=50, state=1)},
+      {'nodes': ['C','D'], 'comp': fls.getComp(comp='Tube', L=200, D=50)},
+      {'nodes': ['E','A'], 'comp': fls.getComp(comp='Tube', L=50, D=50)},
     ],
   )
-  net = net1
-  print('Nodes: ', net.Nodes)
-  print('Edges: ', net.Edges)
-  print('Segments: ')
-  for s in net.Segments:
-    print(s)
-  print('Adjacency: ', net.Adjacency)
-  print('SpanningTree: ', net.SpanningTree)
-  print('AllCycles: ', net.AllCycles)
-  print('FundamentalCycles: ', net.FundamentalCycles)
-  print('findShortestPath: ', net.findShortestPath('A', 'D'))
-  print('\n\nfuncs')
-  for i in net.Funcs['N']:
-    print(i)
-
-  for i in net.Funcs['L']:
-    print('---------')
-    for c in i:
-      print('->', c)
-
-  net1.calcNetwork(0.1)
-  for i in net1.Result:
-    print(i)
-
-  net2.calcNetwork(1.0)
-  for i in net2.Result:
-    print(i)
+  print(net2.toString(detail=1))
+  net2.calcNetwork()
+  print('==========================================================================')
+  print('Valve state 1: closed')
+  print(net1.resultString())
+  net2.components[1]['comp'].state = 2
+  net2.calcNetwork()
+  print('Valve state 2: open')
+  print(net1.resultString())
+  print('==========================================================================')

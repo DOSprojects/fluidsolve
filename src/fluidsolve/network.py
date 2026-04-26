@@ -45,7 +45,7 @@ Solve pipeline summary:
 Typical workflow::
 
   net = getNetwork(name='N1', components=[...])
-  result = net.calcNetwork(iguess=1.0)
+  result = net.calcNetwork()
   print(net.toString(detail=1))
 
 This design keeps topology logic centralized while allowing each component
@@ -59,13 +59,13 @@ class to own its physical constitutive behavior.
 # IMPORTS
 # =============================================================================
 from typing import Any
+import warnings
 import numpy as np
-from scipy.optimize import fsolve
+from scipy.optimize import root
 # module own
 import fluidsolve.medium      as flsme
 import fluidsolve.aux_tools   as flsa
 import fluidsolve.comp_base   as flsb
-import fluidsolve.comp_resist as flsc
 # units
 u         = flsme.unitRegistry
 Quantity  = flsme.Quantity  # type: ignore[misc]
@@ -115,11 +115,17 @@ class Network:
     self._result            : list = []
     # some calculations
     self.addComponents(components)
+    self._infodict = {}
 
   # --------------------------------------------------------------------------
   # PROPERTIES
   @property
-  def Segments(self) -> list[dict]:
+  def components(self) -> Any:
+    ''' Ordered list of components. '''
+    return self._components
+
+  @property
+  def segments(self) -> dict[str, dict]:
     ''' Return the segments of the network.
 
     Returns:
@@ -128,7 +134,7 @@ class Network:
     return self._segments
 
   @property
-  def Nodes(self) -> list[str]:
+  def nodes(self) -> tuple[str, ...]:
     ''' Return the nodes in this network.
 
     Returns:
@@ -137,7 +143,7 @@ class Network:
     return self._nodes
 
   @property
-  def Edges(self) -> list[tuple[str, str]]:
+  def edges(self) -> list[tuple[str, str]]:
     ''' Return the edges in this network.
 
     Returns:
@@ -146,7 +152,7 @@ class Network:
     return list(self._segments.keys())
 
   @property
-  def Adjacency(self) -> dict[str, list[str]]:
+  def adjacency(self) -> dict[str, list[str]]:
     ''' Return the adjacency list.
 
     Returns:
@@ -155,7 +161,7 @@ class Network:
     return self._adjacency
 
   @property
-  def SpanningTree(self) -> list[tuple[str, str]]:
+  def spanningTree(self) -> list[tuple[str, str]]:
     ''' Return the spanning tree.
 
     Returns:
@@ -164,7 +170,7 @@ class Network:
     return self._spanningtree
 
   @property
-  def FundamentalCycles(self) -> list[list[str]]:
+  def fundamentalCycles(self) -> list[list[str]]:
     ''' Return fundamental cycles in the graph.
 
     Returns:
@@ -173,7 +179,7 @@ class Network:
     return self._fundamentalcycles
 
   @property
-  def Funcs(self) -> dict[str, list]:
+  def funcs(self) -> dict[str, list]:
     ''' Return the incidence matrices used to build the system of equations.
 
     Returns:
@@ -182,7 +188,7 @@ class Network:
     return self._funcs
 
   @property
-  def Result(self) -> list[dict]:
+  def result(self) -> list[dict]:
     ''' Return the solver result.
 
     Returns:
@@ -217,15 +223,19 @@ class Network:
       self._components.append({'nodes': list(nodes), 'sense': sense, 'comp': comp,  })
     self._recalc()
 
-  def calcNetwork(self, iguess: Any=1.0) -> Any:
+  def calcNetwork(self, guess: Any=None) -> Any:
     ''' Solve the network using Newton-Raphson.
 
     Args:
-      iguess (float): Initial flow guess for all segments.
+      guess (float, list, tuple, or np.ndarray, optional): Initial flow guess for all segments.
 
     Returns:
       list[dict]: Per segment: name, Q, and H.
     '''
+
+    # Rebuild topology and equation matrices to reflect runtime state changes
+    # of components like multi-way valves.
+    self._recalc()
 
     def F(x: Any) -> Any:
       Q = np.asarray(x)
@@ -237,26 +247,57 @@ class Network:
       if C.shape[0] > 0:
         H = np.zeros(nseg)
         for i, key in enumerate(seg_keys):
-          comp = self._segments[key]['comp']
-          H[i] = comp.calcH(Q[i] * u.m**3 / u.h, +1).magnitude
+          seg = self._segments[key]
+          comp = seg['comp']
+          H[i] = comp.calcH(Q[i] * u.m**3 / u.h, seg['sense'], seg['pB'], seg['pE']).magnitude
         res.extend(C @ H)
       return res
 
     B = np.asarray(self._funcs['B'])    # (n_nodes, n_segments)
     C = np.asarray(self._funcs['C'])    # (n_loops, n_segments)
-    seg_keys = list(self._segments.keys())
+    seg_keys = self._usedSegmentKeys()
     nseg = len(seg_keys)
     neq = max(B.shape[0] - 1, 0) + C.shape[0]
     if nseg != neq:
       raise ValueError(f'Inconsistent equation system: {nseg} unknown flows but {neq} equations')
-    x0 = np.full(nseg, iguess)
-    sol, _, ier, msg = fsolve(F, x0, full_output=True)
-    if ier != 1:
-      raise ValueError(msg)
+    if guess is None:
+      guess_list = [0.5, 2.0, 10.0, 50.0, 200.0]
+    elif isinstance(guess, (list, tuple, np.ndarray)):
+      guess_list = [float(item) for item in guess]
+    else:
+      guess_list = [float(guess)]
+    x0_list = [np.full(nseg, g, dtype=float) for g in guess_list]
+    err_msg = f'Network {self._name} solve did not converge.'
+    sol = None
+    methods = ('hybr', 'lm', 'df-sane')
+    # Try each method for each initial guess until a finite solution is found.
+    for x0 in x0_list:
+      for method in methods:
+        root_res = root(F, x0=x0, method=method)
+        self._infodict = {'solver': f'root:{method}', 'result': root_res}
+        if root_res.success:
+          result_arr = np.asarray(root_res.x, dtype=float)
+          if np.all(np.isfinite(result_arr)):
+            sol = result_arr
+            break
+          err_msg = f'Network {self._name} solve invalid root Q={result_arr}'
+          continue
+        root_msg = str(root_res.message)
+        if root_msg:
+          err_msg = f'Network {self._name} solve [{method}] failed: {root_msg}'
+        else:
+          err_msg = f'Network {self._name} solve [{method}] failed with status={root_res.status}'
+      if sol is not None:
+        break
+    if sol is None:
+      self._result = [{'segment': key, 'Q': 0.0 * u.m**3 / u.h, 'H': 0.0 * u.m} for key in seg_keys]
+      warnings.warn(err_msg, RuntimeWarning, stacklevel=1)
+      return self._result
     self._result = []
     for i, key in enumerate(seg_keys):
       Q = sol[i] * u.m**3 / u.h
-      H = self._segments[key]['comp'].calcH(Q, +1)
+      seg = self._segments[key]
+      H = seg['comp'].calcH(Q, seg['sense'], seg['pB'], seg['pE'])
       self._result.append({'segment': key, 'Q': Q, 'H': H})
     return self._result
 
@@ -271,6 +312,10 @@ class Network:
     self._calcValidation()
     self._calcFuncs()
 
+  def _usedSegmentKeys(self) -> list[str]:
+    ''' Return segment keys enabled for calculation. '''
+    return [key for key, seg in self._segments.items() if seg.get('use', True)]
+
   def _calcSegments(self) -> None:
     ''' Build segment dictionary from component port definitions. '''
     nodeset = set()
@@ -280,19 +325,23 @@ class Network:
       sense = item['sense']
       comp = item['comp']
       nodeset.update(nodes)
+      active_ports = {tuple(conn) for conn in comp.connections(getattr(comp, 'state', None))}
       for port_begin, port_end in comp.ports:
+        port_pair = (port_begin, port_end)
         node_begin = nodes[port_begin - 1]
         node_end = nodes[port_end - 1]
-        key = f'{comp.name}:{node_begin}->{node_end}'
+        key = f'{comp.name}:{node_begin}-{node_end}'
         if key in self._segments:
           raise ValueError(f'Duplicate segment {key}')
-        self._segments[key] = {'B': node_begin, 'E': node_end, 'sense': sense, 'pB': port_begin, 'pE': port_end, 'comp': comp, 'name': key}
+        self._segments[key] = {'use': port_pair in active_ports, 'B': node_begin, 'E': node_end, 'sense': sense, 'pB': port_begin, 'pE': port_end, 'comp': comp, 'name': key}
     self._nodes = tuple(sorted(nodeset))
 
   def _calcAdjacency(self) -> None:
     ''' Build an adjacency list including flow sense. '''
     self._adjacency = {}
     for key, seg in self._segments.items():
+      if not seg.get('use', True):
+        continue
       B = seg['B']
       E = seg['E']
       sense = seg['sense']
@@ -344,7 +393,8 @@ class Network:
     tree_keys = {k for k, _, _, _ in self._spanningtree}
     self._fundamentalcycles = []
     # Each chord (non-tree edge) defines one fundamental cycle.
-    for seg_key, seg in self._segments.items():
+    for seg_key in self._usedSegmentKeys():
+      seg = self._segments[seg_key]
       if seg_key in tree_keys:
         continue  # Skip tree edges; process chords only.
       node_start = seg['B']
@@ -368,7 +418,7 @@ class Network:
     txt = ''
     if not self._fundamentalcycles:
       return 'Empty'
-    has_source = any(seg['comp'].sign > 0 for seg in self._segments.values())
+    has_source = any(seg['comp'].isSource for seg in self._segments.values() if seg.get('use', True))
     if not has_source:
       raise ValueError('Network has no energy source (no pump / pressure source present)')
     for li, loop in enumerate(self._fundamentalcycles):
@@ -396,7 +446,7 @@ class Network:
     self._funcs = {'B': None, 'C': None}
     # B matrix
     nodes = list(self._nodes)
-    seg_keys = list(self._segments.keys())
+    seg_keys = self._usedSegmentKeys()
     B = np.zeros((len(nodes), len(seg_keys)))
     for j, key in enumerate(seg_keys):
       seg = self._segments[key]
@@ -460,25 +510,15 @@ class Network:
     Returns:
       str: Formatted network text.
     '''
-    txt = f'Network "{self._name}"\n'
-    txt += ' Nodes:\n'
-    txt += self.nodeString()
-    txt += ' Segments:\n'
-    txt += self.segmentsString()
+    txt = f'Network "{self._name}":\n'
+    txt += self.nodeString() + '\n'
+    txt += self.segmentsString() + '\n'
     if detail:
-      txt += ' Adjacency:\n'
-      for n, a in self._adjacency.items():
-        txt += f'   {n} -> {a}\n'
-      txt += ' SpanningTree:\n'
-      for s in self._spanningtree:
-        txt += f'   {s}\n'
-      txt += ' FundamentalCycles:\n'
-      for c in self._fundamentalcycles:
-        txt += f'   {c}\n'
-      txt += ' Functions: Combined incidence matrix [B; C]:\n'
-      txt += self.functionString()
-    txt += ' Result:\n'
-    txt += self.resultString()
+      txt += self.adjacencyString() + '\n'
+      txt += self.spanningTreeString() + '\n'
+      txt += self.fundamentalCyclesString() + '\n'
+      txt += self.functionString() + '\n'
+    txt += self.resultString() + '\n'
     return txt
 
   def nodeString(self) -> str:
@@ -487,12 +527,11 @@ class Network:
     Returns:
       str: Node section text.
     '''
+    txt = f' Nodes ({len(self._nodes)}):\n'
     if not self._nodes:
-      return '   <none>\n'
-    node_w = max(4, max(len(str(node)) for node in self._nodes))
-    txt = ''
-    for i, node in enumerate(self._nodes, start=1):
-      txt += f'   [{i:>2}] {str(node):<{node_w}}\n'
+      txt += '  ---\n'
+    else:
+      txt += '   ' + ', '.join(str(node) for node in self._nodes) + '\n'
     return txt
 
   def segmentsString(self) -> str:
@@ -501,34 +540,101 @@ class Network:
     Returns:
       str: Segment section text.
     '''
+    txt = f' Segments ({len(self._segments)}):\n'
     if not self._segments:
-      return '   <none>\n\n'
-    key_w = max(12, max(len(key) for key in self._segments) + 1)
-    comp_w = max(10, max(len(getattr(seg['comp'], 'name', seg['comp'].__class__.__name__)) for seg in self._segments.values()))
-    type_w = max(10, max(len(seg['comp'].__class__.__name__) for seg in self._segments.values()))
-    dir_w = max(
-      9,
-      max(
-        len(f"{seg['B']} → {seg['E']}") if seg['sense'] > 0 else len(f"({seg['B']} ← {seg['E']})")
-        for seg in self._segments.values()
+      txt += '  ---\n'
+    else:
+      key_w = max(6, max(len(key) for key in self._segments))
+      type_w = max(16, max(len(seg['comp'].__class__.__name__) for seg in self._segments.values()))
+      dir_w = max(7,
+        max(
+          len(f"{seg['B']} → {seg['E']}") if seg['sense'] > 0 else len(f"({seg['B']} ← {seg['E']})")
+          for seg in self._segments.values()
+        )
       )
-    )
-    txt = ''
-    for key, seg in self._segments.items():
-      comp = seg['comp']
-      comp_name = getattr(comp, 'name', comp.__class__.__name__)
-      comp_type = comp.__class__.__name__
-      if seg['sense'] > 0:
-        dir_txt = f"{seg['B']} → {seg['E']}"
-      else:
-        dir_txt = f"({seg['B']} ← {seg['E']})"
-      txt += (
-        f"   [{key:<{key_w}}] "
-        f"{dir_txt:<{dir_w}} : "
-        f"{comp_name:<{comp_w}} ({comp_type:<{type_w}}) "
-        f"ports: {seg['pB']} → {seg['pE']}\n"
-      )
-    return txt + '\n'
+      ports_w = max(5, max(len(f"{seg['pB']} → {seg['pE']}") for seg in self._segments.values()))
+      header = f'{"comp":<{key_w}} | {"nodes":<{dir_w}} | {"type":<{type_w}} | {"ports":<{ports_w}}'  # pylint: disable=inconsistent-quotes
+      txt += f'   {header}\n'
+      txt += f'   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for key, seg in self._segments.items():
+        comp = seg['comp']
+        comp_type = comp.__class__.__name__
+        is_used = seg.get('use', True)
+        if seg['sense'] > 0:
+          dir_txt = f'{seg["B"]} → {seg["E"]}'  # pylint: disable=inconsistent-quotes
+        else:
+          dir_txt = f'({seg["B"]} ← {seg["E"]})'  # pylint: disable=inconsistent-quotes
+        ports_txt = f'{seg["pB"]} → {seg["pE"]}'  # pylint: disable=inconsistent-quotes
+        line = f'{key:<{key_w}} | {dir_txt:<{dir_w}} | {comp_type:<{type_w}} | {ports_txt:<{ports_w}}'
+        if not is_used:
+          line = f'[[ {line} ]]'
+          txt += f'{line}\n'
+        else:
+          txt += f'   {line}\n'
+    return txt
+
+  def adjacencyString(self) -> str:
+    ''' Format the adjacency list for display.
+
+    Returns:
+      str: Adjacency section text.
+    '''
+    txt = f' Adjacency ({len(self._adjacency)}):\n'
+    if not self._adjacency:
+      txt += '  ---\n'
+    else:
+      node_w = max(4, max(len(str(node)) for node in self._adjacency))
+      seg_w = max(7, max(len(key) for entries in self._adjacency.values() for key, _, _ in entries))
+      node_to_w = max(1, max(len(str(node_to)) for entries in self._adjacency.values() for _, node_to, _ in entries))
+      link_template = f' {{:<{seg_w}}} -> {{:<{node_to_w}}} ({{:+d}}) '
+      links_w = max(len(', '.join(link_template.format(seg_key, node_to, sense) for seg_key, node_to, sense in entries)) for entries in self._adjacency.values())
+      header = f"{'node':<{node_w}} | {'links':<{links_w}}"
+      txt += f'   {header}\n'
+      txt += f'   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for node, entries in self._adjacency.items():
+        links = ', '.join(link_template.format(seg_key, node_to, sense) for seg_key, node_to, sense in entries)
+        txt += f'   {node:<{node_w}} | {links}\n'
+    return txt
+
+  def spanningTreeString(self) -> str:
+    ''' Format the spanning tree for display.
+
+    Returns:
+      str: Spanning tree section text.
+    '''
+    txt = ' SpanningTree ({len(self._spanningtree)}):\n'
+    if not self._spanningtree:
+      txt += '  ---\n'
+    else:
+      seg_w = max(7, max(len(key) for key, _, _, _ in self._spanningtree))
+      node_w = max(1, max(len(str(node)) for _, node_a, node_b, _ in self._spanningtree for node in (node_a, node_b)))
+      header = f"{'segment':<{seg_w}} | {'path':<{node_w * 2 + 4}} | {'sense':<8}"
+      txt += f'   {header}\n'
+      txt += f'   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for seg_key, node_from, node_to, sense in self._spanningtree:
+        txt += f'   {seg_key:<{seg_w}} | {node_from:<{node_w}} -> {node_to:<{node_w}} | {sense:+d}\n'
+    return txt
+
+  def fundamentalCyclesString(self) -> str:
+    ''' Format the fundamental cycle basis for display.
+
+    Returns:
+      str: Fundamental cycle section text.
+    '''
+    txt = f' FundamentalCycles ({len(self._fundamentalcycles)}):\n'
+    if not self._fundamentalcycles:
+      txt += '  ---\n'
+    else:
+      seg_w = max(7, max(len(seg_key) for cycle in self._fundamentalcycles for seg_key, _, _, _ in cycle))
+      node_w = max(1, max(len(str(node)) for cycle in self._fundamentalcycles for _, node_a, node_b, _ in cycle for node in (node_a, node_b)))
+      for idx, cycle in enumerate(self._fundamentalcycles, start=1):
+        txt += f'   Loop {idx}:\n'
+        header = f"{'segment':<{seg_w}} | {'path':<{node_w * 2 + 4}} | {'sense':<8}"
+        txt += f'      {header}\n'
+        txt += f'      {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+        for seg_key, node_from, node_to, sense in cycle:
+          txt += f'      {seg_key:<{seg_w}} | {node_from:<{node_w}} -> {node_to:<{node_w}} | {sense:+d}\n'
+    return txt
 
   def functionString(self) -> str:
     ''' Format incidence matrices B and C for display.
@@ -536,32 +642,35 @@ class Network:
     Returns:
       str: Matrix section text.
     '''
+
     B = self._funcs.get('B')
     C = self._funcs.get('C')
+    txt = f' Functions: Combined incidence matrix (B:{len(B)}) (C:{len(C)}):\n'
     if B is None or C is None:
-      return 'B/C matrices not initialized\n'
+      txt += '  B/C matrices not initialized\n'
     nodes = list(self._nodes)
-    seg_keys = list(self._segments.keys())
+    seg_keys = self._usedSegmentKeys()
     if not seg_keys:
-      return 'No segments in network\n'
-    # Column width (adaptive)
-    w = max(10, max(len(k) for k in seg_keys) + 2)
-    header = '    Row \\ Seg'.ljust(12) + ' | ' + ' | '.join(f'{k:^{w}}' for k in seg_keys) + '\n'
-    sep = '    ' + '-' * len(header) + '\n'
-    txt = header + sep
-    # --- B block
-    txt += 'B  (Node continuity)\n'
-    for i, node in enumerate(nodes):
-      txt += f'    {node:<12} | ' + ' | '.join(f'{int(B[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
-    txt += sep
-    # --- C block
-    txt += 'C  (Loop energy)\n'
-    if C.shape[0] == 0:
-      txt += '    <no loops>\n'
+      txt += '  No segments in network\n'
     else:
-      for i in range(C.shape[0]):
-        txt += f'    L{i+1:<11} | ' + ' | '.join(f'{int(C[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
-    return txt + '\n'
+      # Column width (adaptive)
+      w = max(8, max(len(k) for k in seg_keys) + 2)
+      header = '    B (Node cont) | ' + ' | '.join(f'{k:^{w}}' for k in seg_keys) + '\n'
+      sep = '    ' + '-' * len(header) + '\n'
+      txt += header + sep
+      # --- B block
+      for i, node in enumerate(nodes):
+        txt += f'    {node:<13} | ' + ' | '.join(f'{int(B[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
+      txt += sep
+      # --- C block
+      txt += '    C (Loop ener) | ' + ' | '.join(f'{k:^{w}}' for k in seg_keys) + '\n'
+      txt += sep
+      if C.shape[0] == 0:
+        txt += '    <no loops>\n'
+      else:
+        for i in range(C.shape[0]):
+          txt += f'    L{i+1:<12} | ' + ' | '.join(f'{int(C[i, j]):^{w}}' for j in range(len(seg_keys))) + '\n'
+    return txt
 
   def resultString(self) -> str:
     ''' Format the solved flow/head results table.
@@ -569,60 +678,35 @@ class Network:
     Returns:
       str: Result section text.
     '''
+    txt = ' Result:\n'
     if not self._result:
-      return '   <empty: run calcNetwork()>\n\n'
-    seg_w = max(12, max(len(str(item['segment'])) for item in self._result) + 2)
-    nodes_w = max(
-      9,
-      max(
-        len(f"{seg['B']} → {seg['E']}") if seg['sense'] > 0 else len(f"({seg['B']} ← {seg['E']})")
-        for seg in self._segments.values()
+      txt += '   not yet calculated\n'
+    else:
+      seg_w = max(8, max(len(str(item['segment'])) for item in self._result) + 2)
+      nodes_w = max(
+        5,
+        max(
+          len(f'{seg["B"]} → {seg["E"]}') if seg['sense'] > 0 else len(f'({seg["B"]} ← {seg["E"]})')  # pylint: disable=inconsistent-quotes
+          for seg in self._segments.values()
+        )
       )
-    )
-    comp_w = 16
-    header = (
-      '   '
-      + f"{'Segment':<{seg_w}}"
-      + ' | '
-      + f"{'Nodes':<{nodes_w}}"
-      + ' | '
-      + f"{'Component':<{comp_w}}"
-      + ' | '
-      + f"{'Q':>16}"
-      + ' | '
-      + f"{'H':>16}"
-      + '\n'
-    )
-    sep = '   ' + '-' * len(header.rstrip('\n')) + '\n'
-    txt = header + sep
-    for item in self._result:
-      seg_key = item['segment']
-      seg = self._segments.get(seg_key, {})
-      comp = seg.get('comp', None)
-      comp_name = getattr(comp, 'name', '-') if comp is not None else '-'
-      if seg:
-        if seg['sense'] > 0:
-          nodes_txt = f"{seg['B']} → {seg['E']}"
+      comp_w = 16
+      header = f'{"Segment":<{seg_w}} | {"Nodes":<{nodes_w}} | {"Component":<{comp_w}} |          Q      |       H  \n'  # pylint: disable=inconsistent-quotes
+      txt += '   ' + header + f'   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for item in self._result:
+        seg_key = item['segment']
+        seg = self._segments.get(seg_key, {})
+        comp = seg.get('comp', None)
+        comp_name = getattr(comp, 'name', '-') if comp is not None else '-'
+        if seg:
+          if seg['sense'] > 0:
+            nodes_txt = f"{seg['B']} → {seg['E']}"
+          else:
+            nodes_txt = f"({seg['B']} ← {seg['E']})"
         else:
-          nodes_txt = f"({seg['B']} ← {seg['E']})"
-      else:
-        nodes_txt = '-'
-      q_txt = f"{item['Q']:.4g~P}"
-      h_txt = f"{item['H']:.4g~P}"
-      txt += (
-        '   '
-        + f'{seg_key:<{seg_w}}'
-        + ' | '
-        + f'{nodes_txt:<{nodes_w}}'
-        + ' | '
-        + f'{comp_name:<{comp_w}}'
-        + ' | '
-        + f'{q_txt:>16}'
-        + ' | '
-        + f'{h_txt:>16}'
-        + '\n'
-      )
-    return txt + '\n'
+          nodes_txt = '-'
+        txt += f'   {seg_key:<{seg_w}} | {nodes_txt:<{nodes_w}} | {comp_name:<{comp_w}} | {item["Q"]:>10.2g~P} | {item["H"]:>7.2g~P}\n'  # pylint: disable=inconsistent-quotes
+    return txt
 
   def networkValidationtoString(self) -> str:
     ''' Return the validation report for fundamental cycles.

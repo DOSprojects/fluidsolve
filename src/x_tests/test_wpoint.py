@@ -4,6 +4,7 @@
 # pylint: disable=invalid-name,missing-function-docstring,missing-class-docstring,unused-argument,no-member
 
 import inspect
+import types
 import pytest
 import fluidsolve.wpoint as module_under_test
 
@@ -75,8 +76,8 @@ def test_calc_operating_point_returns_expected_values(monkeypatch) -> None:
 
   monkeypatch.setattr(
     module_under_test,
-    'fsolve',
-    lambda func, x0, full_output=True: ([2.5], {}, 1, 'ok'),
+    'root',
+    lambda func, x0, method='hybr': types.SimpleNamespace(success=True, x=[2.5], message='ok', status=1),
   )
 
   q_op, h_op = module_under_test.calcOperatingPoint(comp1, comp2, guess=1.0)
@@ -91,12 +92,15 @@ def test_calc_operating_point_raises_when_solver_fails(monkeypatch) -> None:
 
   monkeypatch.setattr(
     module_under_test,
-    'fsolve',
-    lambda func, x0, full_output=True: ([1.0], {}, 0, 'no convergence'),
+    'root',
+    lambda func, x0, method='hybr': types.SimpleNamespace(success=False, x=[1.0], message='no convergence', status=4),
   )
 
-  with pytest.raises(ValueError, match='Operating point did not converge'):
-    module_under_test.calcOperatingPoint(comp1, comp2)
+  with pytest.warns(RuntimeWarning, match='did not converge|no convergence'):
+    q_op, h_op = module_under_test.calcOperatingPoint(comp1, comp2)
+
+  assert q_op.to(u.m**3 / u.h).magnitude == 0.0
+  assert h_op.to(u.m).magnitude == 0.0
 
 def test_wpointdyn_uses_components_and_updates_from_operating_point(monkeypatch) -> None:
   comp1 = DummyComp('C1', factor=-1.0)

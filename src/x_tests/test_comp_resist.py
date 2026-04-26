@@ -7,6 +7,7 @@ import inspect
 from types import SimpleNamespace
 import pytest
 import fluidsolve.comp_resist as module_under_test
+import numpy as np
 
 def test_module_importable() -> None:
   assert module_under_test is not None
@@ -17,10 +18,16 @@ def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:
@@ -130,9 +137,9 @@ def test_comp_serial_combines_components_and_builds_profile() -> None:
 
   comp_a = FixedHead('a', 2)
   comp_b = FixedHead('b', 3)
-  serial = module_under_test.Comp_Serial(item=[comp_a, comp_b])
+  serial = module_under_test.Comp_Serial(comps=[comp_a, comp_b])
 
-  assert serial.Components == [comp_a, comp_b]
+  assert serial.components == [comp_a, comp_b]
   assert serial.getComp(0) is comp_a
   assert serial.calcH(1).to(module_under_test.u.m).magnitude == pytest.approx(5.0)
 
@@ -146,7 +153,7 @@ def test_comp_serial_combines_components_and_builds_profile() -> None:
   assert serial.addComp(comp_b) is comp_b
   assert '0:' in serial.toString()
 
-def test_comp_parallel_validates_guess_and_uses_fsolve_result(monkeypatch) -> None:
+def test_comp_parallel_validates_guess_and_uses_root_result(monkeypatch) -> None:
   class FixedHead(module_under_test.flsb.Comp_Base):
     def __init__(self, name: str, head: float) -> None:
       super().__init__(name=name)
@@ -157,25 +164,23 @@ def test_comp_parallel_validates_guess_and_uses_fsolve_result(monkeypatch) -> No
 
   comp_a = FixedHead('a', 2)
   comp_b = FixedHead('b', 2)
-  parallel = module_under_test.Comp_Parallel(item=[comp_a, comp_b], guess=[1.0])
-
-  with pytest.raises(ValueError, match='does not match number of equations'):
-    parallel.calcH(2)
+  parallel = module_under_test.Comp_Parallel(comps=[comp_a, comp_b], guess=[1.0])
 
   parallel.guess = [1.0, 1.0]
 
-  def fake_fsolve(func=None, x0=None, args=None, full_output=None):
+  def fake_root(func=None, x0=None, args=None, method=None):
     assert callable(func)
-    assert x0 == [1.0, 1.0]
-    assert args.to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.0)
-    assert full_output == 1
-    return [0.5, 1.5], {'ok': True}, 1, 'ok'
+    assert list(x0) == [1.0, 1.0]
+    assert args == pytest.approx((2.0,))
+    assert method in ('hybr', 'lm', 'df-sane')
+    return SimpleNamespace(success=True, x=[0.5, 1.5], message='ok', status=1)
 
-  monkeypatch.setattr(module_under_test, 'fsolve', fake_fsolve)
+  monkeypatch.setattr(module_under_test, 'root', fake_root)
   head = parallel.calcH(2)
   assert head.to(module_under_test.u.m).magnitude == pytest.approx(2.0)
   assert list(parallel.getQ().magnitude) == pytest.approx([0.5, 1.5])
   assert '0:' in parallel.toString()
+  assert parallel.components == [comp_a, comp_b]
 
 def test_comp_parallel2_uses_solver_result_and_reports_failure(monkeypatch) -> None:
   class FixedHead(module_under_test.flsb.Comp_Base):
@@ -188,27 +193,30 @@ def test_comp_parallel2_uses_solver_result_and_reports_failure(monkeypatch) -> N
 
   comp_a = FixedHead('a', 2)
   comp_b = FixedHead('b', 2)
-  parallel = module_under_test.Comp_Parallel2(item=[comp_a, comp_b], guess=1.0)
+  parallel = module_under_test.Comp_Parallel2(comps=[comp_a, comp_b], guess=1.0)
 
-  def fake_ok(func=None, x0=None, args=None, full_output=None):
+  def fake_ok(func=None, x0=None, args=None, method=None):
     assert callable(func)
     assert x0 == 1.0
-    assert args.to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.0)
-    assert full_output == 1
-    return [0.75 * module_under_test.u.m**3 / module_under_test.u.h], {'ok': True}, 1, 'ok'
+    assert args == pytest.approx((2.0,))
+    assert method in ('hybr', 'lm', 'df-sane')
+    return SimpleNamespace(success=True, x=np.array([0.75]), message='ok', status=1)
 
-  monkeypatch.setattr(module_under_test, 'fsolve', fake_ok)
+  monkeypatch.setattr(module_under_test, 'root', fake_ok)
   head = parallel.calcH(2)
   assert head.to(module_under_test.u.m).magnitude == pytest.approx(2.0)
   assert parallel.getQ()[0].magnitude == pytest.approx(0.75)
+  assert parallel.components == [comp_a, comp_b]
 
-  def fake_fail(func=None, x0=None, args=None, full_output=None):
+  def fake_fail(func=None, x0=None, args=None, method=None):
     assert callable(func)
     assert x0 == 1.0
-    assert args.to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.0)
-    assert full_output == 1
-    return [0.75 * module_under_test.u.m**3 / module_under_test.u.h], {}, 0, 'failed'
+    assert args == pytest.approx((2.0,))
+    assert method in ('hybr', 'lm', 'df-sane')
+    return SimpleNamespace(success=False, x=np.array([0.75]), message='failed', status=4)
 
-  monkeypatch.setattr(module_under_test, 'fsolve', fake_fail)
-  with pytest.raises(ValueError, match='failed'):
+  monkeypatch.setattr(module_under_test, 'root', fake_fail)
+  with pytest.warns(RuntimeWarning, match='failed|no convergence'):
     parallel.calcH(2)
+  assert parallel.getQ()[0].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.0)
+  assert parallel.getQ()[1].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(0.0)

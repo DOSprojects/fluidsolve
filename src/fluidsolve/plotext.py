@@ -49,6 +49,214 @@ import fluidsolve.plotlib     as flsp
 u         = flsme.unitRegistry
 Quantity  = flsme.Quantity  # type: ignore[misc]
 # =============================================================================
+# PLOT SIMPLE CLASS
+# =============================================================================
+class PlotSimple:
+  ''' Plot user-provided x/y data on a single graph.
+
+  This class does not calculate hydraulic curves. It only renders data that is
+  passed directly to the class.
+
+  Args:
+    x (list, optional): X values.
+    y (list, optional): Y values.
+    type (str, optional): Curve type: ``line``, ``scatter``, or ``bar``.
+    label (str, optional): Curve label.
+    color (str, optional): Curve color.
+    alpha (float, optional): Curve alpha.
+    linestyle (str, optional): Curve linestyle.
+    marker (str, optional): Curve marker.
+    xlabel (str, optional): X-axis label.
+    ylabel (str, optional): Y-axis label.
+    xmin (int | float, optional): X-axis minimum.
+    xmax (int | float, optional): X-axis maximum.
+    xstep (int | float, optional): X-axis major tick step.
+    ymin (int | float, optional): Y-axis minimum.
+    ymax (int | float, optional): Y-axis maximum.
+    ystep (int | float, optional): Y-axis major tick step.
+  '''
+
+  def __init__(self, **kwargs: int) -> None:
+    args = flsa.GetArgs(kwargs)
+    self._x: list = args.getArg(
+      'x',
+      [
+        flsa.vFun.default([]),
+        flsa.vFun.istype(list),
+      ]
+    )
+    self._y: list = args.getArg(
+      'y',
+      [
+        flsa.vFun.default([]),
+        flsa.vFun.istype(list),
+      ]
+    )
+    self._type: str = args.getArg(
+      'type',
+      [
+        flsa.vFun.default('line'),
+        flsa.vFun.istype(str),
+        flsa.vFun.inlist('line', 'scatter', 'bar'),
+      ]
+    )
+    self._label: str = args.getArg(
+      'label',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._color: str = args.getArg(
+      'color',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._alpha: float = args.getArg(
+      'alpha',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, need=False),
+      ]
+    )
+    self._linestyle: str = args.getArg(
+      'linestyle',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._marker: str = args.getArg(
+      'marker',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    xmin: int | float = args.getArg(
+      'xmin',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    xmax: int | float = args.getArg(
+      'xmax',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    xstep: int | float = args.getArg(
+      'xstep',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    xlabel: str = args.getArg(
+      'xlabel',
+      [
+        flsa.vFun.default('x'),
+        flsa.vFun.istype(str),
+      ]
+    )
+    ymin: int | float = args.getArg(
+      'ymin',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    ymax: int | float = args.getArg(
+      'ymax',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    ystep: int | float = args.getArg(
+      'ystep',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(float, int, need=False),
+      ]
+    )
+    ylabel: str = args.getArg(
+      'ylabel',
+      [
+        flsa.vFun.default('y'),
+        flsa.vFun.istype(str),
+      ]
+    )
+    # generate objects
+    self._fig: flsp.PlotFigure = flsp.PlotFigure(**args.restArgs())
+    self._graph: flsp.PlotGraph = flsp.PlotGraph(self._fig, r=0, c=0)
+    xaxis_args = flsa.prepareArgs(
+      vmin      = xmin,
+      vmax      = xmax,
+      vstep     = xstep,
+      labeltxt  = xlabel,
+    )
+    yaxis_args = flsa.prepareArgs(
+      vmin      = ymin,
+      vmax      = ymax,
+      vstep     = ystep,
+      labeltxt  = ylabel,
+    )
+    self._graph.setXAxis(**xaxis_args)
+    self._graph.setYAxis(**yaxis_args)
+    self._graph.setGrid(axis='both')
+    self._curve: Optional[flsp.PlotCurve] = None
+    self._prepare: bool = True
+
+  def setData(self, x: list, y: list) -> None:
+    ''' Replace the current data series. '''
+    self._x = x
+    self._y = y
+    if self._curve is not None:
+      self._curve.x = self._x
+      self._curve.y = self._y
+
+  def prepareShow(self) -> None:
+    ''' Build plot objects and assign initial data. '''
+    if self._prepare:
+      self._curve = flsp.PlotCurve(
+        self._graph,
+        type=self._type,
+        x=self._x,
+        y=self._y,
+        label=self._label,
+        color=self._color,
+        alpha=self._alpha,
+        linestyle=self._linestyle,
+        marker=self._marker,
+      )
+      self._fig.prepareShow()
+    self._prepare = False
+
+  def show(self) -> None:
+    ''' Prepare and display the plot. '''
+    self.prepareShow()
+    self._fig.show()
+
+  def update(self) -> None:
+    ''' Redraw the full figure with current data. '''
+    if self._curve is not None:
+      self._curve.x = self._x
+      self._curve.y = self._y
+    self._fig.update()
+
+  def updateData(self) -> None:
+    ''' Update only curve data without full redraw logic. '''
+    if self._curve is not None:
+      self._curve.x = self._x
+      self._curve.y = self._y
+    self._fig.updateData()
+
+# =============================================================================
 # PLOT Q-H CURVE CLASS
 # =============================================================================
 class PlotQHcurve:
@@ -75,35 +283,35 @@ class PlotQHcurve:
 
   def __init__(self, **kwargs: int) -> None:
     args = flsa.GetArgs(kwargs)
-    self._pumps: str = args.getArg(
+    self._pumps: list = args.getArg(
       'pumps',
       [
         flsa.vFun.default([]),
         flsa.vFun.istype(object, list, tuple),
       ]
     )
-    self._circuits: str = args.getArg(
+    self._circuits: list = args.getArg(
       'circuits',
       [
         flsa.vFun.default([]),
         flsa.vFun.istype(object, list, tuple),
       ]
     )
-    self._wpoints: str = args.getArg(
+    self._wpoints: list = args.getArg(
       'wpoints',
       [
         flsa.vFun.default([]),
         flsa.vFun.istype(object, list, tuple),
       ]
     )
-    self._spoints: str = args.getArg(
+    self._spoints: list = args.getArg(
       'spoints',
       [
         flsa.vFun.default([]),
         flsa.vFun.istype(object, list, tuple),
       ]
     )
-    self._npts: float = args.getArg(
+    self._npts: int = args.getArg(
       'npts',
       [
           flsa.vFun.default(50),
@@ -148,10 +356,10 @@ class PlotQHcurve:
           flsa.vFun.istype(float, int, need=False),
       ]
     )
-    xlabel: float = args.getArg(
+    xlabel: str = args.getArg(
       'xlabel',
       [
-          flsa.vFun.default('Q (m³/h'),
+          flsa.vFun.default('Q (m³/h)'),
           flsa.vFun.istype(str),
       ]
     )
@@ -176,7 +384,7 @@ class PlotQHcurve:
           flsa.vFun.istype(float, int, need=False),
       ]
     )
-    ylabel: float = args.getArg(
+    ylabel: str = args.getArg(
       'ylabel',
       [
           flsa.vFun.default('H (m)'),
@@ -218,30 +426,29 @@ class PlotQHcurve:
       self._fig.nrw = len(sliders) + 1
       self._fig.ncw = 10
       # button to reset the sliders to initial values
-      buttonreset_pars = dict(
-        r=0, c=8,
-        label='Reset',
-        fun=self._resetControls,
-        color='lightblue', hovercolor='yellow'
-      )
+      buttonreset_pars = {
+        'r': 0, 'c': 8,
+        'label': 'Reset',
+        'fun': self._resetControls,
+        'color': 'lightblue', 'hovercolor': 'yellow',
+      }
       self._buttonreset = flsp.PlotButton(self._fig, **buttonreset_pars)
       for i, slider in enumerate(sliders):
         slider_pars =  flsa.prepareArgs(r=i+1, c='0:9')  | slider
         self._sliders.append(flsp.PlotSlider(self._fig, **slider_pars))
     # local data
-    self._curvepumps      : dict = []
-    self._curvecircuits   : dict = []
-    self._curvewpts       : dict = []
-    self._curvespts       : dict = []
-    self._annotationwpts  : dict = []
-    self._annotationspts  : dict = []
+    self._curvepumps      : list = []
+    self._curvecircuits   : list = []
+    self._curvewpts       : list = []
+    self._curvespts       : list = []
+    self._annotationwpts  : list = []
+    self._annotationspts  : list = []
     #
     self._prepare         : bool  = True
 
   def update(self) -> Any:
     ''' Recalculate and redraw the full figure. '''
     self._calcAndUpdate()
-    self._fig.update()
     self._fig.update()
 
   def updateData(self) -> Any:
@@ -254,29 +461,28 @@ class PlotQHcurve:
     ''' Build plot objects and calculate initial data. '''
     if self._prepare:
       for _pump in self._pumps:
-        self._curvepumps.append(flsp.PlotCurve(self._graph, type='line', extra=dict(zorder=1),))
+        self._curvepumps.append(flsp.PlotCurve(self._graph, type='line', extra={'zorder': 1}))
       for _circuit in self._circuits:
-        self._curvecircuits.append(flsp.PlotCurve(self._graph, type='line', extra=dict(zorder=2),))
+        self._curvecircuits.append(flsp.PlotCurve(self._graph, type='line', extra={'zorder': 2}))
       for _points in self._wpoints:
         self._curvewpts.append(flsp.PlotCurve(
           self._graph, type='scatter',
-          color='red', marker='o', markersize=5, extra=dict(zorder=20),
+          color='red', marker='o', markersize=5, extra={'zorder': 20},
         ))
         self._annotationwpts.append(flsp.PlotAnnotation(
           self._graph,
-          halignment='left', xoffset=3, extra=dict(zorder=21),
+          halignment='left', xoffset=3, extra={'zorder': 21},
         ))
       for _points in self._spoints:
         self._curvespts.append(flsp.PlotCurve(
           self._graph, type='scatter',
-          color='green', marker='o', markersize=5, extra=dict(zorder=12),
+          color='green', marker='o', markersize=5, extra={'zorder': 12},
         ))
         self._annotationspts.append(flsp.PlotAnnotation(
           self._graph,
-          halignment='center', xoffset=10, xtoggle=1, extra=dict(zorder=11),
+          halignment='center', xoffset=10, xtoggle=1, extra={'zorder': 11},
         ))
       self._calcAndUpdate()
-      #TODO set axis, grid and labels and limits
       self._fig.prepareShow()
     self._prepare = False
 

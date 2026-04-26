@@ -11,12 +11,30 @@ import fluidsolve.plotlib as module_under_test
 class DummyParent:
   def __init__(self, axes=None):
     self.axes = axes if axes is not None else DummyAxes()
+    self._xaxis2 = None
+    self._yaxis2 = None
 
   def addCurve(self, _curve):
     return 0
 
   def addAnnotation(self, _annotation):
     return 0
+
+  def getAxes(self, axis='main'):
+    if axis in ('main', 'x1', 'y1'):
+      return self.axes
+    if axis == 'x2':
+      return None if self._xaxis2 is None else self._xaxis2.axes
+    if axis == 'y2':
+      return None if self._yaxis2 is None else self._yaxis2.axes
+    raise ValueError(f'Invalid axis {axis}')
+
+  def getAllAxes(self):
+    axes = [self.axes]
+    for axis in (self._xaxis2, self._yaxis2):
+      if axis is not None and axis.axes is not None and axis.axes not in axes:
+        axes.append(axis.axes)
+    return axes
 
 def test_module_importable() -> None:
   assert module_under_test is not None
@@ -26,14 +44,29 @@ def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
 
-@pytest.mark.parametrize('name', [])
-def test_public_variables_exist(name: str) -> None:
-  assert hasattr(module_under_test, name)
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
+
+def test_public_variables_exist() -> None:
+  public_variable_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test)
+    if not name.startswith('_')
+    and not inspect.isclass(obj)
+    and not inspect.isfunction(obj)
+    and getattr(obj, '__module__', module_under_test.__name__) == module_under_test.__name__
+  ]
+
+  for name in public_variable_names:
+    assert hasattr(module_under_test, name)
 
 class DummyCanvas:
   def __init__(self):
@@ -70,6 +103,8 @@ class DummyAxes:
     self.calls = []
     self.xaxis = SimpleNamespace(set_minor_locator=lambda loc: self.calls.append(('xminor', loc)))
     self.yaxis = SimpleNamespace(set_minor_locator=lambda loc: self.calls.append(('yminor', loc)))
+    self.legend_handles = []
+    self.legend_labels = []
 
   def set_title(self, *args, **kwargs):
     self.calls.append(('set_title', args, kwargs))
@@ -91,6 +126,31 @@ class DummyAxes:
 
   def set_ylabel(self, *args, **kwargs):
     self.calls.append(('set_ylabel', args, kwargs))
+
+  def tick_params(self, *args, **kwargs):
+    self.calls.append(('tick_params', args, kwargs))
+
+  def sharex(self, other):
+    self.calls.append(('sharex', other))
+
+  def sharey(self, other):
+    self.calls.append(('sharey', other))
+
+  def twinx(self):
+    twin = DummyAxes()
+    self.calls.append(('twinx', twin))
+    return twin
+
+  def twiny(self):
+    twin = DummyAxes()
+    self.calls.append(('twiny', twin))
+    return twin
+
+  def legend(self, **kwargs):
+    self.calls.append(('legend', kwargs))
+
+  def get_legend_handles_labels(self):
+    return self.legend_handles, self.legend_labels
 
   def grid(self, **kwargs):
     self.calls.append(('grid', kwargs))
@@ -171,8 +231,8 @@ def test_plotgraph_show_creates_axes_and_invokes_children() -> None:
   fig._gs = DummyGridSpec(1, 1, figure=fig._fig)
 
   graph = module_under_test.PlotGraph(fig, r='0:1', c=':')
-  graph.setXAxis(vmin=0, vmax=10, vstep=5, auto=False, labeltxt='Q')
-  graph.setYAxis(vmin=0, vmax=10, vstep=5, auto=False, labeltxt='H')
+  graph.setXAxis(vmin=0, vmax=10, vstep=5, labeltxt='Q')
+  graph.setYAxis(vmin=0, vmax=10, vstep=5, labeltxt='H')
   graph.setGrid(axis='both')
 
   curve = SimpleNamespace(show_calls=0, update_calls=0, update_data_calls=0)
@@ -227,6 +287,25 @@ def test_plotcurve_line_scatter_bar_show_and_update_data() -> None:
   assert any(c[0] == 'scatter_offsets' for c in calls)
   assert any(c[0] == 'bar_y' for c in calls)
 
+def test_plotcurve_can_target_secondary_y_axis() -> None:
+  parent = DummyParent()
+  parent._yaxis2 = module_under_test.PlotAxis(parent, type='y2', labeltxt='Q')
+  parent._yaxis2.show()
+
+  curve = module_under_test.PlotCurve(parent, type='line', x=[1, 2], y=[3, 4], axis='y2', label='Flow')
+  curve.show()
+
+  assert any(c[0] == 'twinx' for c in parent.axes.calls)
+  twin_axes = parent._yaxis2.axes
+  assert twin_axes is not None
+  assert any(c[0] == 'plot' and c[3]['label'] == 'Flow' for c in twin_axes.calls)
+
+def test_plotcurve_raises_when_secondary_axis_is_missing() -> None:
+  parent = DummyParent()
+
+  with pytest.raises(ValueError, match='Axis y2 is not configured'):
+    module_under_test.PlotCurve(parent, type='line', x=[1], y=[2], axis='y2').show()
+
 def test_plotannotation_validates_and_updates_annotations() -> None:
   parent = DummyParent()
   annotation = module_under_test.PlotAnnotation(parent, x=[1, 2], y=[3, 4], label=['A', 'B'], xtoggle=1)
@@ -241,14 +320,14 @@ def test_plotannotation_validates_and_updates_annotations() -> None:
 
 def test_plotaxis_grid_and_extra_validation() -> None:
   graph = DummyParent()
-  axis = module_under_test.PlotAxis(graph, type='x1', auto=False, vmin=0, vmax=10, vstep=5, labeltxt='Q')
+  axis = module_under_test.PlotAxis(graph, type='x1', vmin=0, vmax=10, vstep=5, labeltxt='Q')
   axis.show()
 
   grid = module_under_test.PlotGrid(graph, axis='both', color='gray')
   grid.show()
 
-  with pytest.raises(ValueError, match='Need vmin, vmax and vstep'):
-    module_under_test.PlotAxis(graph, type='y1', auto=False, vmin=0, vmax=10).show()
+  with pytest.raises(ValueError, match='Need vmin and vmax when vstep is provided'):
+    module_under_test.PlotAxis(graph, type='y1', vmin=0, vstep=1).show()
   with pytest.raises(ValueError, match='Invalid extra'):
     grid.setExtra('bad', alpha=0.5)
 
@@ -259,6 +338,25 @@ def test_plotaxis_applies_manual_limits_even_when_auto_ticks_remain_enabled() ->
   axis.show()
 
   assert ('set_ylim', (), {'bottom': None, 'top': 30}) in graph.axes.calls
+
+def test_plotlegend_collects_entries_from_secondary_axes() -> None:
+  graph = module_under_test.PlotGraph(module_under_test.PlotFigure(), r=0, c=0)
+  graph._ax = DummyAxes()
+  graph.setYAxis2(labeltxt='Q')
+  graph._yaxis2.show()
+  graph.axes.legend_handles = ['h1']
+  graph.axes.legend_labels = ['Level']
+  graph.getAxes('y2').legend_handles = ['h2']
+  graph.getAxes('y2').legend_labels = ['Flow']
+
+  legend = module_under_test.PlotLegend(graph, loc='upper right')
+  legend.show()
+
+  legend_calls = [call for call in graph.axes.calls if call[0] == 'legend']
+  assert legend_calls
+  kwargs = legend_calls[-1][1]
+  assert kwargs['handles'] == ['h1', 'h2']
+  assert kwargs['labels'] == ['Level', 'Flow']
 
 def test_plotbutton_and_plotslider_show_bind_callbacks(monkeypatch) -> None:
   monkeypatch.setattr(module_under_test, 'Button', lambda *args, **kwargs: DummyWidget())

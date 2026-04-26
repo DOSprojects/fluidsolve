@@ -15,10 +15,16 @@ def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['N_CURVE_POINTS', 'Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:
@@ -55,6 +61,7 @@ def test_comp_pump_calcH_and_calcQ_cover_forward_reverse_and_clamping() -> None:
 
   assert pump.calcH(5).to(module_under_test.u.m).magnitude == pytest.approx(9.0)
   assert pump.calcH(5, sense=-1).to(module_under_test.u.m).magnitude == 0.0
+  assert pump.calcH(-5, sense=-1).to(module_under_test.u.m).magnitude == pytest.approx(9.0)
   assert pump.calcH(25).to(module_under_test.u.m).magnitude == 0.0
 
   assert pump.calcQ(6 * module_under_test.u.m).to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(10.0)

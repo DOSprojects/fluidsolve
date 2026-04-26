@@ -146,7 +146,7 @@ if __name__ == '__main__':
   for topic, flow in flows.items():
     print(f'\n{topic}')
     print('-' * len(topic))
-    for comp in circuits[topic].Components:
+    for comp in circuits[topic].components:
       _parts = []
       if hasattr(comp, 'D'):
         _parts.append(f'Q2v={fls.Qtov(flow, comp.D):.2f~P}')

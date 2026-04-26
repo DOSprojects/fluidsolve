@@ -67,6 +67,7 @@ from .material import (
   Material,
   )
 from .plotext import (
+  PlotSimple,
   PlotQHcurve,
   )
 from .plotlib import (
@@ -164,13 +165,14 @@ __all__ = [
   'PlotAnnotation',
   'PlotAxis',
   'PlotButton',
+  'PlotSlider',
   'PlotCurve',
   'PlotFigure',
   'PlotGraph',
   'PlotGrid',
   'PlotLine',
+  'PlotSimple',
   'PlotQHcurve',
-  'PlotSlider',
   'Wpoint',
   'WpointDyn',
   'vFun',

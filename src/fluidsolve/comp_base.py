@@ -50,7 +50,9 @@ Example::
 # =============================================================================
 from typing import Any
 import copy
-from scipy.optimize import fsolve
+import math
+import warnings
+from scipy.optimize import root
 # module own
 import fluidsolve.aux_tools  as flsa
 import fluidsolve.util       as flsu
@@ -155,11 +157,11 @@ class Comp_Base:  # pylint: disable=invalid-name
     ''' Component ports '''
     return self._ports
 
-  #def connections(self, state: int | None = None):
-  #  ''' Return internal port connections for the given state.
-  #      Default: simple 2-port component
-  #  '''
-  #  return [(1, 2)]
+  def connections(self, state: int | None = None):  # pylint: disable=unused-argument
+    ''' Return internal port connections for the given state.
+        Default: simple 2-port component
+    '''
+    return [(1, 2)]
 
   @property
   def medium(self) -> flsme.Medium:
@@ -197,6 +199,23 @@ class Comp_Base:  # pylint: disable=invalid-name
     return self._sign
 
   @property
+  def isSource(self) -> bool:
+    '''
+    Energy sign:
+    +1 = pump / energy source
+    -1 = resistance (bends, tubes)
+    For static height this depends on direction (up = -1.0, down = +1.0).
+    Therefore the sign is handled in the static head term and the
+    component sign remains +1.0.
+    '''
+    if self._sign > 0:
+      return True
+    Hs = getattr(self, 'Hs', None)
+    if Hs is None:
+      return False
+    return Hs.magnitude > 0
+
+  @property
   def state(self) -> int | float:
     ''' Component state (e.g. valve position) '''
     return self._state
@@ -231,7 +250,7 @@ class Comp_Base:  # pylint: disable=invalid-name
     '''
     return flsu.Htop(self.calcH(Q, sense, pin, pout), self._medium.rho)
 
-  def calcQ(self, H: Quantity, guess: Any=200, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+  def calcQ(self, H: Quantity, guess: Any=None, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
     '''
     Calculate flow rate for a given head.
 
@@ -249,8 +268,28 @@ class Comp_Base:  # pylint: disable=invalid-name
       return (H - abs(self.calcH(q * u.m**3 / u.h, sense, pin, pout))).magnitude
 
     H = flsa.toUnits(H, u.m)
-    res = fsolve(F, x0=guess)
-    return res[0] * u.m**3 / u.h
+    if guess is None:
+      x0_list = [0.5, 2.0, 10.0, 50.0, 200.0]
+    elif isinstance(guess, (list, tuple)):
+      x0_list = [float(item) for item in guess]
+    else:
+      x0_list = [float(guess)]
+    last_msg = 'Flow solve did not converge.'
+    methods = ('hybr', 'lm', 'df-sane')
+    for x0 in x0_list:
+      for method in methods:
+        root_res = root(F, x0=x0, method=method)
+        if not root_res.success:
+          msg = str(root_res.message)
+          last_msg = msg if msg else f'root[{method}] failed with status={root_res.status}'
+          continue
+        q_mag = float(root_res.x.flat[0])
+        if not math.isfinite(q_mag):
+          last_msg = f'Invalid root Q={q_mag}'
+          continue
+        return q_mag * u.m**3 / u.h
+    warnings.warn(f'calcQ did not converge: {last_msg}. Returning Q=0.', RuntimeWarning, stacklevel=2)
+    return 0.0 * u.m**3 / u.h
 
   # --------------------------------------------------------------------------
   # UTILITIES

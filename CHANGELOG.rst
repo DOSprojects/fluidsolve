@@ -37,3 +37,8 @@ Fix liniting errors.
 
 - ready for a V1.0.0?
 
+V0.9.1 (26/04/2026)
+===================
+Some minor fixes and cosmetic changes.
+
+- ready for a V1.0.0?

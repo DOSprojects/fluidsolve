@@ -43,9 +43,7 @@ series model is sufficient.
 # =============================================================================
 # IMPORTS
 # =============================================================================
-from typing import Optional, Any
-import numpy as np
-from scipy.optimize import fsolve
+from typing import Any
 # module own
 import fluidsolve.medium      as flsme
 import fluidsolve.aux_tools   as flsa
@@ -98,12 +96,12 @@ class Path(flsb.Comp_Base):
   #----------------------------------------------------------------------------
   # PROPERTIES
   @property
-  def Name(self) -> str:
+  def name(self) -> str:
     ''' Path name. '''
     return self._name
 
   @property
-  def Components(self) -> Any:
+  def components(self) -> Any:
     ''' Ordered list of component entries (comp, sense, pin, pout). '''
     return self._items
 
@@ -151,6 +149,8 @@ class Path(flsb.Comp_Base):
       pout = item.get('pout', None)
       if not isinstance(comp, flsb.Comp_Base):
         raise ValueError(f'Unknown component: {comp}')
+      if comp.sign > 0:
+        raise ValueError(f'Path accepts only dissipative components (sign=-1), got sign={comp.sign} for "{comp.name}"')
       if sense not in (+1, -1):
         raise ValueError(f'sense must be +1 or -1, got {sense}')
       if comp.nports > 2:
@@ -245,10 +245,9 @@ class Path(flsb.Comp_Base):
       str: Formatted path text.
     '''
     txt = f'Path "{self._name}"\n'
-    txt += ' Components:\n'
-    txt += self.componentsString()
-    if detail:
-      txt += f' Count: {len(self._items)}\n'
+    if detail>0:
+      txt += f'  Components ({len(self._items)}):\n'
+      txt += self.componentsString()
     return txt
 
   def componentsString(self) -> str:
@@ -260,19 +259,15 @@ class Path(flsb.Comp_Base):
     if not self._items:
       return '   <none>\n\n'
     idx_w = max(3, len(str(len(self._items))))
-    name_w = max(10, max(len(getattr(item['comp'], 'name', item['comp'].__class__.__name__)) for item in self._items))
-    type_w = max(10, max(len(item['comp'].__class__.__name__) for item in self._items))
-    txt = ''
+    name_w = max(4, max(len(getattr(item['comp'], 'name', item['comp'].__class__.__name__)) for item in self._items))
+    type_w = max(4, max(len(item['comp'].__class__.__name__) for item in self._items))
+    ports_w = max(6, max(len(f"{item['pin']} -> {item['pout']}") for item in self._items))
+    header = f'{"idx":>{idx_w}} | {"Comp":<{name_w}} | {"Type":<{type_w}} | {"Dir":<3} | {"Ports":<{ports_w}}'  # pylint: disable=inconsistent-quotes
+    txt = '   ' + header + f'\n   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
     for i, item in enumerate(self._items, start=1):
       comp = item['comp']
-      comp_name = getattr(comp, 'name', comp.__class__.__name__)
-      comp_type = comp.__class__.__name__
+      compstr = getattr(comp, 'name', '-')
       dir_txt = '→' if item['sense'] > 0 else '←'
-      txt += (
-        f'   [{i:>{idx_w}}] '
-        f'{comp_name:<{name_w}} '
-        f'({comp_type:<{type_w}}) '
-        f'dir: {dir_txt} '
-        f'ports: {item["pin"]} -> {item["pout"]}\n'  # pylint: disable=inconsistent-quotes
-      )
-    return txt + '\n'
+      ports_txt = f"{item['pin']} -> {item['pout']}"
+      txt += f'   {i:>{idx_w}} | {compstr:<{name_w}} | {comp.__class__.__name__:<{type_w}} |  {dir_txt}  | {ports_txt:<{ports_w}}\n'
+    return txt

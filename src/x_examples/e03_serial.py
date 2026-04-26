@@ -78,7 +78,7 @@ if __name__ == '__main__':
   print('Total (parallel) component:')
   PrintIt(comp_parallel, Q)
   print ('Q en H for every item:')
-  for i in range(len(comp_parallel.Components)):
+  for i in range(len(comp_parallel.components)):
     print(f'Component {comp_parallel.getComp(i).name}: Q={comp_parallel.getQ()[i]:.2f~P} H={comp_parallel.getH()[i]:.2f~P}')
   print('-------------\n')
   print('Total (parallel2) component:')

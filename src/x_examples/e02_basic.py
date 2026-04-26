@@ -59,11 +59,11 @@ if __name__ == '__main__':
     ],
   )
   print('Flow to speed and vice versa (component 0):')
-  print(f'v2Q met v={v:.2f~P}: {fls.vtoQ(v, path1.Components[0]['comp'].D):.2f~P}')
-  print(f'Q2v met Q={Q:.2f~P}: {fls.Qtov(Q, path1.Components[0]['comp'].D):.2f~P}')
+  print(f'v2Q met v={v:.2f~P}: {fls.vtoQ(v, path1.components[0]['comp'].D):.2f~P}')
+  print(f'Q2v met Q={Q:.2f~P}: {fls.Qtov(Q, path1.components[0]['comp'].D):.2f~P}')
   print('-------------\n')
   print('Detail of all components:')
-  for c in path1.Components:
+  for c in path1.components:
     PrintIt(c['comp'], c['sense'], Q)
   print('Path:')
   PrintIt(path1, 1, Q)

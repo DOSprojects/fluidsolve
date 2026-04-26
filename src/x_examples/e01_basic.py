@@ -59,8 +59,6 @@ if __name__ == '__main__':
     default_medium = fls.Medium(name='test', mu=mu, rho=rho, k=fls.Medium(prd='water').k),
     default_material = fls.Material(e=e),
   )
-  print(fls.getDefaultMedium())
-  print('----------\n')
   path1 = fls.getPath(
     name='path 1',
     components=[
@@ -76,7 +74,7 @@ if __name__ == '__main__':
   K_fls = []
   P_fls = []
   H_fls = []
-  for comp in path1.Components:
+  for comp in path1.components:
     K_fls.append(comp['comp'].calcK(Q, comp['sense']))
     P_fls.append(comp['comp'].calcP(Q, comp['sense']))
     H_fls.append(comp['comp'].calcH(Q, comp['sense']))
@@ -84,6 +82,8 @@ if __name__ == '__main__':
   P_fls_T = sum(P_fls)
   H_fls_T = sum(H_fls)
 
+  print(fls.getDefaultMedium(), '\n')
+  print(path1.toString(detail=1))
   print('|     |  K native  |   K fls    |    P native    |     P fls      |     H fls      |')
   print('|-----|------------|------------|----------------|----------------|----------------|')
   for i, k_native in enumerate(K_native):

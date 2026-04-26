@@ -4,24 +4,27 @@
 # pylint: disable=invalid-name,missing-function-docstring,missing-class-docstring
 
 import inspect
+import types
 import pytest
 import fluidsolve.comp_base as module_under_test
 
 def test_module_importable() -> None:
   assert module_under_test is not None
 
-
 @pytest.mark.parametrize('name', ['Comp_Base', 'Comp_Dummy', 'Comp_Reverse'])
 def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
-
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['NO_DIAMETER', 'NO_LENGTH', 'NO_MEDIUM', 'Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:
@@ -29,7 +32,6 @@ def test_public_variables_exist(name: str) -> None:
 
 def test_comp_base_defaults_and_properties() -> None:
   comp = module_under_test.Comp_Base(name='base', state=3)
-
   assert comp.name == 'base'
   assert comp.group == 'Base'
   assert comp.part == 'Base'
@@ -43,14 +45,11 @@ def test_comp_base_defaults_and_properties() -> None:
 def test_comp_base_medium_and_roughness_setters() -> None:
   comp = module_under_test.Comp_Base()
   medium = module_under_test.flsme.Medium(prd='water')
-
   comp.medium = medium
   assert comp.medium is medium
-
   comp.medium = 'water'
   assert isinstance(comp.medium, module_under_test.flsme.Medium)
   assert comp.medium.name == 'water'
-
   comp.e = 15
   roughness = comp.e
   assert isinstance(roughness, module_under_test.Quantity)
@@ -59,7 +58,6 @@ def test_comp_base_medium_and_roughness_setters() -> None:
 
 def test_comp_base_medium_setter_rejects_invalid_type() -> None:
   comp = module_under_test.Comp_Base()
-
   with pytest.raises(TypeError, match='Medium must be a string or an instance of Medium'):
     comp.medium = 123  # type: ignore[assignment]
 
@@ -81,13 +79,14 @@ def test_comp_base_calc_methods_and_clone() -> None:
   assert clone.medium is not comp.medium
   assert clone.medium.name == comp.medium.name
 
-def test_comp_base_calcq_uses_fsolve_result(monkeypatch) -> None:
+def test_comp_base_calcq_uses_root_result(monkeypatch) -> None:
   comp = module_under_test.Comp_Base()
 
-  def fake_fsolve(func, x0):
+  def fake_root(func=None, x0=None, method=None):
     assert x0 == 200
+    assert method in ('hybr', 'lm', 'df-sane')
     assert func(12) == pytest.approx(0.0)
-    return [12]
+    return types.SimpleNamespace(success=True, x=[12], message='ok', status=1)
 
   def fake_calcH(flow, sense=1, pin=1, pout=2):
     assert sense == 1
@@ -95,10 +94,10 @@ def test_comp_base_calcq_uses_fsolve_result(monkeypatch) -> None:
     assert pout == 2
     return flow.to(module_under_test.u.m**3 / module_under_test.u.h).magnitude * module_under_test.u.m / 12
 
-  monkeypatch.setattr(module_under_test, 'fsolve', fake_fsolve)
+  monkeypatch.setattr(module_under_test, 'root', fake_root)
   monkeypatch.setattr(comp, 'calcH', fake_calcH)
 
-  result = comp.calcQ(1 * module_under_test.u.m)
+  result = comp.calcQ(1 * module_under_test.u.m, guess=200)
   assert result.magnitude == 12
   assert result.units == module_under_test.u.m**3 / module_under_test.u.h
 

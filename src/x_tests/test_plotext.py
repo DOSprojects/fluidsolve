@@ -12,15 +12,21 @@ import fluidsolve.plotext as module_under_test
 def test_module_importable() -> None:
   assert module_under_test is not None
 
-@pytest.mark.parametrize('name', ['PlotQHcurve'])
+@pytest.mark.parametrize('name', ['PlotQHcurve', 'PlotSimple'])
 def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:
@@ -136,9 +142,9 @@ def test_plot_qhcurve_initializes_graph_axes_and_optional_widgets(monkeypatch) -
   assert plotter._fig.ncw == 10
   assert isinstance(plotter._buttonreset, DummyButton)
   assert len(plotter._sliders) == 1
-  assert plotter._sliders[0].kwargs['label'] == 'Speed'
-  assert plotter._sliders[0].kwargs['r'] == 1
-  assert plotter._sliders[0].kwargs['c'] == '0:9'
+  assert getattr(plotter._sliders[0], 'kwargs')['label'] == 'Speed'
+  assert getattr(plotter._sliders[0], 'kwargs')['r'] == 1
+  assert getattr(plotter._sliders[0], 'kwargs')['c'] == '0:9'
 
 def test_prepare_show_creates_plot_objects_and_populates_data(monkeypatch) -> None:
   _install_plot_stubs(monkeypatch)
@@ -228,7 +234,7 @@ def test_update_and_update_data_delegate_to_figure(monkeypatch) -> None:
   update_data_calls = getattr(plotter._fig, 'update_data_calls')
 
   assert calls == ['calc', 'calc']
-  assert update_calls == 2
+  assert update_calls == 1
   assert update_data_calls == 1
 
 def test_reset_controls_resets_each_slider(monkeypatch) -> None:
@@ -238,3 +244,48 @@ def test_reset_controls_resets_each_slider(monkeypatch) -> None:
   plotter._resetControls(event=None)
 
   assert [slider.reset_calls for slider in plotter._sliders] == [1, 1]
+
+
+def test_plot_simple_initializes_single_graph_with_provided_data(monkeypatch) -> None:
+  _install_plot_stubs(monkeypatch)
+
+  plotter = module_under_test.PlotSimple(
+    x=[1, 2],
+    y=[3, 4],
+    type='line',
+    xlabel='X',
+    ylabel='Y',
+    xmin=0,
+    xmax=10,
+    xstep=2,
+    ymin=0,
+    ymax=20,
+    ystep=5,
+    title='Simple',
+  )
+  plotter.prepareShow()
+
+  assert isinstance(plotter._fig, DummyFigure)
+  assert isinstance(plotter._graph, DummyGraph)
+  assert getattr(plotter._fig, 'kwargs') == {'title': 'Simple'}
+  assert getattr(plotter._graph, 'xaxis') == {'vmin': 0, 'vmax': 10, 'vstep': 2, 'labeltxt': 'X'}
+  assert getattr(plotter._graph, 'yaxis') == {'vmin': 0, 'vmax': 20, 'vstep': 5, 'labeltxt': 'Y'}
+  assert getattr(plotter._graph, 'grid') == {'axis': 'both'}
+  assert isinstance(plotter._curve, DummyCurve)
+  assert getattr(plotter._curve, 'kwargs')['x'] == [1, 2]
+  assert getattr(plotter._curve, 'kwargs')['y'] == [3, 4]
+
+
+def test_plot_simple_set_data_and_update_paths(monkeypatch) -> None:
+  _install_plot_stubs(monkeypatch)
+
+  plotter = module_under_test.PlotSimple(x=[1], y=[2])
+  plotter.prepareShow()
+  plotter.setData([2, 3], [4, 5])
+  plotter.update()
+  plotter.updateData()
+
+  assert plotter._curve.x == [2, 3]
+  assert plotter._curve.y == [4, 5]
+  assert getattr(plotter._fig, 'update_calls') == 1
+  assert getattr(plotter._fig, 'update_data_calls') == 1

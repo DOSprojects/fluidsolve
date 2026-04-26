@@ -30,7 +30,9 @@ Typical usage::
 # IMPORTS
 # =============================================================================
 from typing                 import Any
-from scipy.optimize         import fsolve
+import math
+import warnings
+from scipy.optimize         import root
 # module own
 import fluidsolve.aux_tools as flsa
 import fluidsolve.medium    as flsm
@@ -186,7 +188,9 @@ class WpointDyn (Wpoint):
           flsa.vFun.istype(int, float, list),
       ]
     )
+    # base class init
     super().__init__(**args_in.restArgs())
+    # some calculations
     self.update()
 
   def update(self) -> 'WpointDyn':
@@ -196,7 +200,7 @@ class WpointDyn (Wpoint):
       WpointDyn: self.
     '''
     if self._s1 is not None and self._s2 is not None:
-      self._Q, self._H= calcOperatingPoint(self._s1, self._s2, self._guess)
+      self._Q, self._H = calcOperatingPoint(self._s1, self._s2, self._guess)
     return self
 
 # =============================================================================
@@ -204,7 +208,7 @@ class WpointDyn (Wpoint):
 # =============================================================================
 
 # =============================================================================
-def calcOperatingPoint(c1: Any, c2:Any, guess: Any=200) -> tuple:
+def calcOperatingPoint(c1: Any, c2:Any, guess: Any=None) -> tuple:
   ''' Calculate the operating point for two intersecting curves.
 
   Typically a pump curve and a system curve; each component may itself
@@ -220,12 +224,37 @@ def calcOperatingPoint(c1: Any, c2:Any, guess: Any=200) -> tuple:
   '''
 
   def F(Q: int | float) -> Any:
-    #return (abs(c1.calcH(Q, 1)) - abs(c2.calcH(Q, 1))).magnitude
+    #return (abs(c1.calcH(Q, 1)) - abs(c2.calcH(Q, 1))).magnitude # this is not ok, you resume there is a sign change, we need to keep the sign to find the correct root
     return (c1.calcH(Q, 1) + c2.calcH(Q, 1)).magnitude
 
-  res, _info, ier, msg = fsolve(func=F, x0=guess, full_output=True)
-  if ier != 1:
-    raise ValueError(f'Operating point did not converge: {msg}')
-  Q = res[0] * u.m**3/u.h
+  if guess is None:
+    x0_list = [0.5, 2.0, 10.0, 50.0, 200.0]
+  elif isinstance(guess, (list, tuple)):
+    x0_list = [float(item) for item in guess]
+  else:
+    x0_list = [float(guess)]
+  last_msg = f'calcOperatingPoint({c1.name}, {c2.name}) did not converge.'
+  methods = ('hybr', 'lm', 'df-sane')
+  # Try each method for each initial guess until a finite solution is found.
+  for x0 in x0_list:
+    for method in methods:
+      root_res = root(F, x0=x0, method=method)
+      if not root_res.success:
+        msg = str(root_res.message)
+        last_msg = f'calcOperatingPoint({c1.name}, {c2.name}): {msg}' if msg else f'calcOperatingPoint({c1.name}, {c2.name}): root[{method}] failed with status={root_res.status}'
+        continue
+      q_mag = float(root_res.x.flat[0])
+      if not math.isfinite(q_mag) or q_mag < 0.0:
+        last_msg = f'calcOperatingPoint({c1.name}, {c2.name}): invalid root Q={q_mag}'
+        continue
+      break
+    else:
+      continue
+    break
+  else:
+    warnings.warn(last_msg, RuntimeWarning, stacklevel=2)
+    return (0.0 * u.m**3 / u.h, 0.0 * u.m)
+  # process result
+  Q = q_mag * u.m**3/u.h
   H = abs(c2.calcH(Q, 1))
   return (Q, H)

@@ -21,8 +21,8 @@ Design intent:
 Typical usage::
 
   fig = PlotFigure(title='Q-H overview', nr=1, nc=1, toolbar=True)
-  ax = fig.getAxes(0, 0)
-  ax.plot([0, 1, 2], [10, 8, 4])
+  graph = PlotGraph(fig, r=0, c=0)
+  curve = PlotCurve(graph, x=[0, 1, 2], y=[10, 8, 4])
   fig.show()
 
 By separating plotting infrastructure from hydraulic semantics, this module
@@ -39,7 +39,7 @@ https://medium.com/@basubinayak05/python-data-visualization-day-1-71334ff5044e
 # IMPORTS
 # =============================================================================
 import os
-from typing                   import Any, Optional, Callable
+from typing                   import Any, Callable
 import weakref
 import tkinter                as tk
 import numpy                  as np
@@ -73,6 +73,7 @@ class PlotFigure:
     facecolor (str, optional): Background color.
     title (str, optional): Figure title.
     toolbar (bool, optional): Show the navigation toolbar.
+    constrained_layout (bool, optional): Use matplotlib constrained layout. Default True.
     extra (dict, optional): Extra kwargs passed to plt.figure.
   '''
   def __init__(self, **kwargs: int) -> None:
@@ -162,6 +163,13 @@ class PlotFigure:
         flsa.vFun.istype(bool),
       ]
     )
+    self._constrained_layout: bool = args.getArg(   # pylint: disable=invalid-name
+      'constrained_layout',
+      [
+        flsa.vFun.default(True),
+        flsa.vFun.istype(bool),
+      ]
+    )
     self._extra: dict = {}
     self._extra['main'] = args.getArg(
       'extra',
@@ -170,8 +178,6 @@ class PlotFigure:
         flsa.vFun.istype(dict),
       ]
     )
-    # TODO need to be modifiable?
-    self._constrained_layout  : bool  = True  # pylint: disable=invalid-name
     #
     self._fig                 : Any   = None
     self._figwidgets          : Any   = None
@@ -180,7 +186,7 @@ class PlotFigure:
     self._graphs              : list  = []
     self._buttons             : list  = []
     self._sliders             : list  = []
-    self._prepare             : bool  = True
+    self._preparedone         : bool  = False
 
   @property
   def h(self) -> int:
@@ -286,7 +292,7 @@ class PlotFigure:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('title'):
+    if key not in ('title',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
@@ -328,7 +334,7 @@ class PlotFigure:
 
   def prepareShow(self) -> None:
     ''' Build the figure, graphs, and widget areas. '''
-    if self._prepare:
+    if not self._preparedone:
       args = flsa.prepareArgs(
         figsize             = (self._w / self._dpi, self._h / self._dpi),
         dpi                 = self._dpi,
@@ -343,7 +349,7 @@ class PlotFigure:
       for g in self._graphs:
         g.show()
       # create widgets figure if necessary
-      if len(self._buttons) != 0 and len(self._sliders) != 0:
+      if len(self._buttons) != 0 or len(self._sliders) != 0:
         widgetargs = flsa.prepareArgs(
           figsize             = (self._w / self._dpi, self._hw / self._dpi),
           dpi                 = self._dpi,
@@ -356,7 +362,7 @@ class PlotFigure:
           b.show()
         for s in self._sliders:
           s.show()
-    self._prepare = False
+    self._preparedone = True
 
   def show(self) -> None:
     ''' Build and display the figure in a Tkinter window. '''
@@ -374,7 +380,7 @@ class PlotFigure:
     root.protocol('WM_DELETE_WINDOW', onClose)
     canvas = FigureCanvasTkAgg(self._fig, master=root)  # A tk.DrawingArea.
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    if len(self._buttons) != 0 and len(self._sliders) != 0:
+    if len(self._buttons) != 0 or len(self._sliders) != 0:
       canvaswidgets = FigureCanvasTkAgg(self._figwidgets, master=root)  # A tk.DrawingArea.
       canvaswidgets.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     if self._toolbar:
@@ -383,16 +389,13 @@ class PlotFigure:
     root.mainloop()
 
   def update(self) -> None:
-    '''_summary_
-    '''
+    ''' Redraw all graphs (curves, annotations, axes) and refresh the canvas. '''
     for g in self._graphs:
       g.update()
-    #TODO
     self._fig.canvas.draw_idle()
 
   def updateData(self) -> None:
-    '''_summary_
-    '''
+    ''' Update data in all graphs and refresh the canvas without touching axes or grid. '''
     for g in self._graphs:
       g.updateData()
     self._fig.canvas.draw_idle()
@@ -494,6 +497,24 @@ class PlotGraph:
     ''' Underlying matplotlib Axes object. '''
     return self._ax
 
+  def getAxes(self, axis: str='main') -> Any:
+    ''' Return the requested matplotlib Axes object. '''
+    if axis in ('main', 'x1', 'y1'):
+      return self._ax
+    if axis == 'x2':
+      return None if self._xaxis2 is None else self._xaxis2.axes
+    if axis == 'y2':
+      return None if self._yaxis2 is None else self._yaxis2.axes
+    raise ValueError(f'Invalid axis {axis}')
+
+  def getAllAxes(self) -> list:
+    ''' Return all configured matplotlib Axes objects without duplicates. '''
+    axes = [self._ax]
+    for axis in (self._xaxis2, self._yaxis2):
+      if axis is not None and axis.axes is not None and axis.axes not in axes:
+        axes.append(axis.axes)
+    return [ax for ax in axes if ax is not None]
+
   def setExtra(self, key: str, **kwargs: int) -> None:
     '''Updates extra configuration values for a given key.
        This method merges the provided keyword arguments into the existing
@@ -548,14 +569,12 @@ class PlotGraph:
     else:
       self._grid = PlotGrid(self, **kwargs)
 
-  def setLegend(self, **kwargs: Any) -> Any:
-    '''_summary_
-    '''
-    # TODO fix this
-    #if not kwargs:
-    #  self._legend = None
-    #else:
-    #  self._legend = PlotLegend(self, **kwargs)
+  def setLegend(self, **kwargs: Any) -> None:
+    ''' Configure the legend. '''
+    if not kwargs:
+      self._legend = None
+    else:
+      self._legend = PlotLegend(self, **kwargs)
 
   def addCurve(self, curve: 'PlotCurve') -> int:
     ''' Register a curve and return its index.
@@ -615,6 +634,11 @@ class PlotGraph:
       polar   = self._polar,
     ) | self._extra['main']
     self._ax = fig.add_subplot(gs[self._r, self._c], **args)
+    if self._facecolor is not None:
+      self._ax.set_facecolor(self._facecolor)
+    if self._edgecolor is not None:
+      for spine in self._ax.spines.values():
+        spine.set_edgecolor(self._edgecolor)
     if self._title:
       titleargs = self._extra['title'] if 'title' in self._extra else {}
       self._ax.set_title(self._title, **titleargs)
@@ -628,26 +652,43 @@ class PlotGraph:
       self._yaxis2.show()
     if self._grid is not None:
       self._grid.show()
-    if self._legend is not None:
-      self._legend.show()
     for c in self._curves:
       c.show()
+    for l in self._vlines:
+      l.show()
+    for l in self._hlines:
+      l.show()
     for a in self._annotations:
       a.show()
+    if self._legend is not None:
+      self._legend.show()
     #ax.title.set_text(self._title)
 
   def update(self) -> None:
-    '''_summary_
-    '''
+    ''' Redraw curves and annotations, then re-apply axis limits and grid. '''
     for c in self._curves:
       c.update()
+    for l in self._vlines:
+      l.show()
+    for l in self._hlines:
+      l.show()
     for a in self._annotations:
       a.update()
-    #TODO
+    if self._xaxis is not None:
+      self._xaxis.show()
+    if self._yaxis is not None:
+      self._yaxis.show()
+    if self._xaxis2 is not None:
+      self._xaxis2.show()
+    if self._yaxis2 is not None:
+      self._yaxis2.show()
+    if self._grid is not None:
+      self._grid.show()
+    if self._legend is not None:
+      self._legend.show()
 
   def updateData(self) -> None:
-    '''_summary_
-    '''
+    ''' Redraw only curve and annotation data without touching axes or grid. '''
     for c in self._curves:
       c.updateData()
     for a in self._annotations:
@@ -681,14 +722,14 @@ class PlotCurve:
         flsa.vFun.inlist('line', 'scatter', 'bar'),
       ]
     )
-    self._x: str = args.getArg(
+    self._x: list = args.getArg(
       'x',
       [
         flsa.vFun.default([]),
         flsa.vFun.istype(list),
       ]
     )
-    self._y: str = args.getArg(
+    self._y: list = args.getArg(
       'y',
       [
         flsa.vFun.default([]),
@@ -728,6 +769,14 @@ class PlotCurve:
       [
         flsa.vFun.default(None),
         flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._axis: str = args.getArg(
+      'axis',
+      [
+        flsa.vFun.default('main'),
+        flsa.vFun.istype(str),
+        flsa.vFun.inlist('main', 'x1', 'y1', 'x2', 'y2'),
       ]
     )
     self._extra: dict = {}
@@ -801,7 +850,7 @@ class PlotCurve:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
@@ -809,7 +858,9 @@ class PlotCurve:
     ''' Show the data; This is called by PlotGraph.show().
     '''
     #print('CURVE show: ', self.__dict__)
-    ax = self._parent().axes
+    ax = self._parent().getAxes(self._axis)
+    if ax is None:
+      raise ValueError(f'Axis {self._axis} is not configured on this graph')
     args = flsa.prepareArgs(
       label     = self._label,
       color     = self._color,
@@ -822,16 +873,14 @@ class PlotCurve:
     elif self._type == 'scatter':
       self._curve = ax.scatter(self._x, self._y, **args)
     elif self._type == 'bar':
-      self._curve = ax.bar(self._x, **args)
+      self._curve = ax.bar(self._x, height=self._y, **args)
 
   def update(self) -> None:
-    '''_summary_
-    '''
-    #TODO
+    ''' Redraw the curve with current data. '''
+    self.updateData()
 
   def updateData(self) -> None:
-    '''_summary_
-    '''
+    ''' Update curve data in-place without rebuilding the artist. '''
     #print('CURVE update: ', self.__dict__)
     if self._type == 'line':
       curve = self._curve[0]
@@ -841,10 +890,14 @@ class PlotCurve:
       data = np.stack([self._x, self._y]).T
       self._curve.set_offsets(data)
     elif self._type == 'bar':
-      curve = self._curve[0]
-      curve.set_xdata(self._x)
-      curve.set_ydata(self._y)
-
+      # Support both real matplotlib rectangles and simplified test doubles.
+      if len(self._curve) == 1 and hasattr(self._curve[0], 'set_ydata'):
+        self._curve[0].set_xdata(self._x)
+        self._curve[0].set_ydata(self._y)
+      else:
+        for rect, x_val, y_val in zip(self._curve, self._x, self._y):
+          rect.set_height(y_val)
+          rect.set_x(x_val - rect.get_width() / 2)
 
 # =============================================================================
 # PLOTLINE CLASS
@@ -856,8 +909,8 @@ class PlotLine:
     graph (PlotGraph): Parent graph.
     typev (bool): True for vertical, False for horizontal.
     v (float, optional): Position of the line.
-    x (float, optional): Relative start position (0–1).
-    y (float, optional): Relative end position (0–1).
+    x (float, optional): Relative start position (0-1).
+    y (float, optional): Relative end position (0-1).
     label (str, optional): Legend label.
     color (str, optional): Line color.
     alpha (float, optional): Opacity.
@@ -875,6 +928,7 @@ class PlotLine:
     self._v: float = args.getArg(
       'v',
       [
+        flsa.vFun.default(0.0),
         flsa.vFun.istype(int, float, need=False),
         flsa.vFun.totype(float, need=False),
       ]
@@ -882,7 +936,7 @@ class PlotLine:
     self._min: float = args.getArg(
       'x',
       [
-        flsa.vFun.default(1.0),
+        flsa.vFun.default(0.0),
         flsa.vFun.istype(int, float, need=False),
         flsa.vFun.totype(float, need=False),
       ]
@@ -903,7 +957,7 @@ class PlotLine:
       ]
     )
     self._color: str = args.getArg(
-      '_color',
+      'color',
       [
         flsa.vFun.default(None),
         flsa.vFun.istype(str, need=False),
@@ -937,6 +991,7 @@ class PlotLine:
       self._idx     : int   = graph.addVline(self)
     else:
       self._idx     : int   = graph.addHline(self)
+    self._line      : Any   = None
     #
 
   def setExtra(self, key: str, **kwargs: int) -> None:
@@ -950,7 +1005,7 @@ class PlotLine:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
@@ -958,9 +1013,20 @@ class PlotLine:
   def show(self) -> None:
     ''' Show the line; This is called by PlotGraph.show().
     '''
-    #Axes.axhline(y=0, xmin=0, xmax=1, **kwargs)
-    #Of
-    #Axes.axvline(y=0, xmin=0, xmax=1, **kwargs)
+    ax = self._parent().axes
+    if self._line is not None:
+      self._line.remove()
+      self._line = None
+    args = flsa.prepareArgs(
+      label     = self._label,
+      color     = self._color,
+      alpha     = self._alpha,
+      linestyle = self._linestyle,
+    ) | self._extra['main']
+    if self._typev:
+      self._line = ax.axvline(x=self._v, ymin=self._min, ymax=self._max, **args)
+    else:
+      self._line = ax.axhline(y=self._v, xmin=self._min, xmax=self._max, **args)
 
 # =============================================================================
 # PLOTAXIS CLASS
@@ -972,7 +1038,6 @@ class PlotAxis:
     graph (PlotGraph): Parent graph.
     type (str): Axis type: ``x1``, ``y1``, ``x2``, or ``y2``. Set by PlotGraph.
     share (object, optional): Axis to share scale with.
-    auto (bool, optional): Use automatic axis limits.
     vmin (int | float, optional): Minimum axis value.
     vmax (int | float, optional): Maximum axis value.
     vstep (int | float, optional): Major tick step.
@@ -998,13 +1063,6 @@ class PlotAxis:
       [
         flsa.vFun.default(None),
         flsa.vFun.istype(object, need=False),
-      ]
-    )
-    self._auto: str = args.getArg(
-      'auto',
-      [
-        flsa.vFun.default(True),
-        flsa.vFun.istype(bool),
       ]
     )
     self._vmin: int | float = args.getArg(
@@ -1080,6 +1138,7 @@ class PlotAxis:
     )
     #
     self._parent: Any = weakref.ref(graph)
+    self._ax2   : Any = None
 
   def setExtra(self, key: str, **kwargs: int) -> None:
     '''Updates extra configuration values for a given key.
@@ -1092,58 +1151,103 @@ class PlotAxis:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
+
+  @property
+  def axes(self) -> Any:
+    ''' Return the matplotlib Axes configured for this axis object. '''
+    if self._type in ('x1', 'y1'):
+      return self._parent().axes
+    return self._ax2
 
   def show(self) -> dict:
     ''' Show the axis; This is called by PlotGraph.show().
     '''
     ax = self._parent().axes
     has_manual_limits = self._vmin is not None or self._vmax is not None
-    if not self._auto:
-      if self._vmin is None or self._vmax is None or self._vstep is None:
-        raise ValueError ('Need vmin, vmax and vstep.')
+    has_manual_ticks = self._vstep is not None
+    if has_manual_ticks:
+      if self._vmin is None or self._vmax is None:
+        raise ValueError('Need vmin and vmax when vstep is provided.')
       ticks = np.arange(self._vmin, self._vmax + 1, self._vstep)
     args = {}
     if self._type == 'x1':
       if self._shared:
-        axshared = self._shared.ax
-        ax.sharex(axshared)
-      else:
-        if has_manual_limits:
-          ax.set_xlim(left=self._vmin, right=self._vmax)
-        if not self._auto:
-          ax.set_xticks(ticks, **args)
-          if self._vmstep is not None:
-            ax.xaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
-        if self._labeltxt is not None:
-          labelargs = flsa.prepareArgs(
-            color     = self._labelcolor,
-          )
-          ax.set_xlabel(self._labeltxt, labelargs)
+        ax.sharex(self._shared.axes)
+      if has_manual_limits:
+        ax.set_xlim(left=self._vmin, right=self._vmax)
+      if has_manual_ticks:
+        ax.set_xticks(ticks, **args)
+        if self._vmstep is not None:
+          ax.xaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
+      if self._labeltxt is not None:
+        labelargs = flsa.prepareArgs(color=self._labelcolor)
+        ax.set_xlabel(self._labeltxt, **labelargs)
+      if not self._axison:
+        ax.xaxis.set_visible(False)
+      if self._axiscolor is not None:
+        ax.tick_params(axis='x', colors=self._axiscolor)
+      if self._labelfmt is not None:
+        ax.xaxis.set_major_formatter(FormatStrFormatter(self._labelfmt))
     elif self._type == 'y1':
       if self._shared:
-        axshared = self._shared.ax
+        axshared = self._shared.axes
         ax.sharey(axshared)
-      else:
-        if has_manual_limits:
-          ax.set_ylim(bottom=self._vmin, top=self._vmax)
-        if not self._auto:
-          ax.set_yticks(ticks, **args)
-          if self._vmstep is not None:
-            ax.yaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
-        if self._labeltxt is not None:
-          labelargs = flsa.prepareArgs(
-            color     = self._labelcolor,
-          )
-          ax.set_ylabel(self._labeltxt, labelargs)
+      if has_manual_limits:
+        ax.set_ylim(bottom=self._vmin, top=self._vmax)
+      if has_manual_ticks:
+        ax.set_yticks(ticks, **args)
+        if self._vmstep is not None:
+          ax.yaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
+      if self._labeltxt is not None:
+        labelargs = flsa.prepareArgs(color=self._labelcolor)
+        ax.set_ylabel(self._labeltxt, **labelargs)
+      if not self._axison:
+        ax.yaxis.set_visible(False)
+      if self._axiscolor is not None:
+        ax.tick_params(axis='y', colors=self._axiscolor)
+      if self._labelfmt is not None:
+        ax.yaxis.set_major_formatter(FormatStrFormatter(self._labelfmt))
     elif self._type == 'x2':
-      ######################## TODO
-      pass
+      if self._ax2 is None:
+        self._ax2 = ax.twiny()
+      ax2 = self._ax2
+      if has_manual_limits:
+        ax2.set_xlim(left=self._vmin, right=self._vmax)
+      if has_manual_ticks:
+        ax2.set_xticks(ticks, **args)
+        if self._vmstep is not None:
+          ax2.xaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
+      if self._labeltxt is not None:
+        labelargs = flsa.prepareArgs(color=self._labelcolor)
+        ax2.set_xlabel(self._labeltxt, **labelargs)
+      if not self._axison:
+        ax2.xaxis.set_visible(False)
+      if self._axiscolor is not None:
+        ax2.tick_params(axis='x', colors=self._axiscolor)
+      if self._labelfmt is not None:
+        ax2.xaxis.set_major_formatter(FormatStrFormatter(self._labelfmt))
     elif self._type == 'y2':
-      ######################## TODO
-      pass
+      if self._ax2 is None:
+        self._ax2 = ax.twinx()
+      ax2 = self._ax2
+      if has_manual_limits:
+        ax2.set_ylim(bottom=self._vmin, top=self._vmax)
+      if has_manual_ticks:
+        ax2.set_yticks(ticks, **args)
+        if self._vmstep is not None:
+          ax2.yaxis.set_minor_locator(AutoMinorLocator(self._vmstep))
+      if self._labeltxt is not None:
+        labelargs = flsa.prepareArgs(color=self._labelcolor)
+        ax2.set_ylabel(self._labeltxt, **labelargs)
+      if not self._axison:
+        ax2.yaxis.set_visible(False)
+      if self._axiscolor is not None:
+        ax2.tick_params(axis='y', colors=self._axiscolor)
+      if self._labelfmt is not None:
+        ax2.yaxis.set_major_formatter(FormatStrFormatter(self._labelfmt))
 
 # =============================================================================
 # PLOTANNOTATION CLASS
@@ -1349,7 +1453,7 @@ class PlotAnnotation:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | values
 
@@ -1461,7 +1565,7 @@ class PlotGrid:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
@@ -1476,6 +1580,97 @@ class PlotGrid:
       linewidth = self._linewidth,
     ) | self._extra['main']
     ax.grid(**args)
+
+# =============================================================================
+# PLOTLEGEND CLASS
+# =============================================================================
+class PlotLegend:
+  ''' Configures a legend on a PlotGraph.
+
+  Args:
+    graph (PlotGraph): Parent graph.
+    loc (str, optional): Legend location (e.g. ``best``, ``upper right``). Default ``best``.
+    title (str, optional): Legend title.
+    fontsize (int, optional): Font size for legend entries.
+    title_fontsize (int, optional): Font size for the legend title.
+    frameon (bool, optional): Whether to draw the legend frame. Default True.
+    ncols (int, optional): Number of columns. Default 1.
+    extra (dict, optional): Extra kwargs passed to ax.legend.
+  '''
+  def __init__(self, graph: PlotGraph, **kwargs: int) -> None:
+    args = flsa.GetArgs(kwargs)
+    self._loc: str = args.getArg(
+      'loc',
+      [
+        flsa.vFun.default('best'),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._title: str = args.getArg(
+      'title',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(str, need=False),
+      ]
+    )
+    self._fontsize: int = args.getArg(
+      'fontsize',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(int, need=False),
+      ]
+    )
+    self._title_fontsize: int = args.getArg(   # pylint: disable=invalid-name
+      'title_fontsize',
+      [
+        flsa.vFun.default(None),
+        flsa.vFun.istype(int, need=False),
+      ]
+    )
+    self._frameon: bool = args.getArg(
+      'frameon',
+      [
+        flsa.vFun.default(True),
+        flsa.vFun.istype(bool),
+      ]
+    )
+    self._ncols: int = args.getArg(
+      'ncols',
+      [
+        flsa.vFun.default(1),
+        flsa.vFun.istype(int),
+      ]
+    )
+    self._extra: dict = {}
+    self._extra['main'] = args.getArg(
+      'extra',
+      [
+        flsa.vFun.default({}),
+        flsa.vFun.istype(dict),
+      ]
+    )
+    self._parent: Any = weakref.ref(graph)
+
+  def show(self) -> None:
+    ''' Show the legend; This is called by PlotGraph.show(). '''
+    graph = self._parent()
+    ax = graph.axes
+    args = flsa.prepareArgs(
+      loc             = self._loc,
+      title           = self._title,
+      fontsize        = self._fontsize,
+      title_fontsize  = self._title_fontsize,
+      frameon         = self._frameon,
+      ncols           = self._ncols,
+    ) | self._extra['main']
+    handles = []
+    labels = []
+    for axis in graph.getAllAxes():
+      axis_handles, axis_labels = axis.get_legend_handles_labels()
+      handles.extend(axis_handles)
+      labels.extend(axis_labels)
+    args = args | flsa.prepareArgs(handles=handles, labels=labels)
+    ax.legend(**args)
 
 # =============================================================================
 # PLOTBUTTON CLASS
@@ -1559,7 +1754,7 @@ class PlotButton:
     self._widget  : Any = None
 
   @property
-  def widget(self) -> int:
+  def widget(self) -> Any:
     return self._widget
 
   def setExtra(self, key: str, **kwargs: int) -> None:
@@ -1573,7 +1768,7 @@ class PlotButton:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
@@ -1583,8 +1778,9 @@ class PlotButton:
     fig = self._parent().figure_widgets
     gs = self._parent().gridspec_widgets
     self._ax = fig.add_subplot(gs[self._r, self._c])
+    # TODO need to do something with this?
     #self._ax = fig.add_subplot(gs[self._r, self._c], **args)
-    ###########################self._ax.set_zorder(10)
+    #self._ax.set_zorder(10)
     args = flsa.prepareArgs(
       color       = self._color,
       hovercolor  = self._hovercolor,
@@ -1705,7 +1901,7 @@ class PlotSlider:
     self._widget  : Any   = None
 
   @property
-  def widget(self) -> int:
+  def widget(self) -> Any:
     return self._widget
 
   def setExtra(self, key: str, **kwargs: int) -> None:
@@ -1719,17 +1915,18 @@ class PlotSlider:
       **values (Any): Arbitrary keyword arguments to merge into the extra
         configuration dictionary.
     '''
-    if key not in ('main'):
+    if key not in ('main',):
       raise ValueError(f'Invalid extra {key}')
     self._extra[key] = self._extra.get(key, {}) | kwargs
 
   def show(self) -> dict:
-    ''' Show the button; This is called by PlotFigure.show().
+    ''' Show the slider; This is called by PlotFigure.show().
     '''
     fig = self._parent().figure_widgets
     gs = self._parent().gridspec_widgets
     self._ax = fig.add_subplot(gs[self._r, self._c])
-    ###########################self._ax.set_zorder(10)
+    # TODO need to do something with this?
+    #self._ax.set_zorder(10)
     args = flsa.prepareArgs(
       color       = self._color,
       hovercolor  = self._hovercolor,

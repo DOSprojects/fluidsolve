@@ -68,8 +68,9 @@ catalogue values before running a network solve.
 # IMPORTS
 # =============================================================================
 from typing import Any
+import warnings
 import numpy as np
-from scipy.optimize import fsolve
+from scipy.optimize import root
 import fluids.units as fu
 # module own
 import fluidsolve.aux_tools as flsa
@@ -362,6 +363,10 @@ class Comp_Tube(Comp_Appendage):  # pylint: disable=invalid-name
       int | float: Head loss coefficient K.
     '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
+    mag = lQ.magnitude
+    if not hasattr(mag, '__len__') and abs(mag) < 1e-15:
+      self._K = 0.0
+      return self._K
     Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
     fd = fu.friction_factor(Re, eD=self._e/self._D)
     self._K = (fd * self._L / self._D).to_base_units()
@@ -1142,8 +1147,8 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
   def __init__(self, **kwargs: int) -> None:
     # arguments
     args_in = flsa.GetArgs(kwargs)
-    self._items : list =args_in.getArg(
-      'item',
+    self._items : list = args_in.getArg(
+      'comps',
       [
           flsa.vFun.default([]),
           flsa.vFun.istype(list),
@@ -1158,7 +1163,7 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
   # --------------------------------------------------------------------------
   # PROPERTIES
   @property
-  def Components(self) -> list:
+  def components(self) -> list:
     return self._items
 
   def getComp(self, idx: int) -> flsb.Comp_Base:
@@ -1189,7 +1194,7 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
       Any: Summed head change across all components.
     '''
     lQ = flsa.toUnits(Q, u.m**3/u.h)
-    return sum([item.calcH(lQ, sense, pin, pout) for item in self._items])
+    return sum(item.calcH(lQ, sense, pin, pout) for item in self._items)
 
   def calcHprofile(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2, incr: bool=False) -> Any:
     '''Calculate per-component head profile for a given flow.
@@ -1254,18 +1259,24 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
   def __init__(self, **kwargs: int) -> None:
     # arguments
     args_in = flsa.GetArgs(kwargs)
-    self._guess : int | float | list =args_in.getArg(
+    guess = args_in.getArg(
       'guess',
       [
-          flsa.vFun.default(1.0),
-          flsa.vFun.istype(int, float, list),
+        flsa.vFun.default(None),
+        flsa.vFun.istype(int, float, list, tuple, need=None),
       ]
     )
-    self._items : list =args_in.getArg(
-      'item',
+    if guess is None:
+      self._guess = [0.5, 2.0, 10.0, 50.0, 200.0]
+    elif isinstance(guess, (list, tuple)):
+      self._guess = [float(item) for item in guess]
+    else:
+      self._guess = [float(guess)]
+    self._items : list = args_in.getArg(
+      'comps',
       [
-          flsa.vFun.default([]),
-          flsa.vFun.istype(list),
+        flsa.vFun.default([]),
+        flsa.vFun.istype(list),
       ]
     )
     # base class init
@@ -1273,24 +1284,25 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     # some calculations
     for c in self._items:
       c.medium = self._medium
-    self._H = None
-    self._Q = None
+    #
+    self._H = [0.0, 0.0] *u.m
+    self._Q = [0.0, 0.0] *u.m**3/u.h
     self._infodict = {}
 
   # --------------------------------------------------------------------------
   # PROPERTIES
   @property
-  def guess(self) -> int:
-    ''' Guess for fsolve.
+  def guess(self) -> list:
+    ''' Guess values for nonlinear solver retries.
 
     Returns:
-      int | float | list: Guess.
+      list : Guess.
     '''
     return self._guess
 
   @guess.setter
   def guess(self, value: int | float | list) -> Any:
-    ''' Set initial guess for fsolve.
+    ''' Set initial guess values for nonlinear solver retries.
 
     Args:
       value (int | float | list): Guess.
@@ -1298,7 +1310,7 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     self._guess = value
 
   @property
-  def Components(self) -> list:
+  def components(self) -> list:
     return self._items
 
   def getComp(self, idx: int) -> flsb.Comp_Base:
@@ -1336,7 +1348,7 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     '''
 
     def F(Q: list[float], Qtot: int | float) -> list[float]:
-      ''' fsolve system of equations.
+      ''' Nonlinear system of equations for parallel flow split.
       Residuals should converge to zero.
 
       Args:
@@ -1354,22 +1366,39 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
       res.append(sum(Q) - Qtot)
       return res
 
-    lQ = flsa.toUnits(Q, u.m**3/u.h, magnitude=True)
+    lQ_mag = flsa.toUnits(Q, u.m**3/u.h).magnitude
     # number of equations
     n_items = len(self._items)
     top = n_items - 1
-    # Initial guess
-    initial_guess = None
-    if isinstance(self._guess, (int, float)):
-      initial_guess = [self._guess] * (n_items)
-    elif isinstance(self._guess, list):
-      if len(self._guess) != n_items:
-        raise ValueError(f'Initial guess length {len(self._guess)} does not match number of equations: {n_items}')
-      initial_guess = self._guess
-    # Solve the system of equations
-    result, self._infodict, ier, msg = fsolve(func=F, x0=initial_guess, args=lQ, full_output=1)
-    if ier != 1:
-      raise ValueError(f'Error in Parallel Component "{self._name}".calcH: {msg}')
+    x0_list = [np.full(n_items, g, dtype=float) for g in self._guess]
+    last_msg = f'Comp_Parallel "{self._name}".calcH: no convergence.'
+    methods = ('hybr', 'lm', 'df-sane')
+    # Solve the system of equations with retry guesses
+    for x0 in x0_list:
+      solved = False
+      for method in methods:
+        root_res = root(F, x0=x0, args=(lQ_mag,), method=method)
+        self._infodict = {'solver': f'root:{method}', 'result': root_res}
+        if not root_res.success:
+          msg = str(root_res.message)
+          last_msg = msg if msg else f'Comp_Parallel "{self._name}".calcH: root[{method}] failed with status={root_res.status}'
+          continue
+        result_arr = np.asarray(root_res.x, dtype=float)
+        if not np.all(np.isfinite(result_arr)):
+          last_msg = f'Comp_Parallel "{self._name}".calcH: invalid root {result_arr}'
+          continue
+        result = result_arr
+        solved = True
+        break
+      if solved:
+        break
+    else:
+      self._Q = [0.0 *u.m**3/u.h] * n_items
+      if n_items > 0:
+        self._Q[0] = lQ_mag * u.m**3/u.h
+      self._H = [0.0 *u.m] * n_items
+      warnings.warn(last_msg, RuntimeWarning, stacklevel=2)
+      return self._H[0]
     # process result
     self._Q = result *u.m**3/u.h
     self._H = [0.0] * n_items
@@ -1414,20 +1443,24 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
   def __init__(self, **kwargs: int) -> None:
     # arguments
     args_in = flsa.GetArgs(kwargs)
-    self._initguess : float =args_in.getArg(
+    guess : float = args_in.getArg(
       'guess',
       [
-          flsa.vFun.default(1.0),
-          flsa.vFun.istype(int, float),
-          flsa.vFun.totype(float),
+        flsa.vFun.default(None),
+        flsa.vFun.istype(int, float, list, tuple, need=None),
       ]
     )
-    self._items : list =args_in.getArg(
-      'item',
+    if guess is None:
+      self._guess = [0.5, 2.0, 10.0, 50.0, 200.0]
+    elif isinstance(guess, (list, tuple)):
+      self._guess = [float(item) for item in guess]
+    else:
+      self._guess = [float(guess)]
+    self._items : list = args_in.getArg(
+      'comps',
       [
           flsa.vFun.default([]),
-          flsa.vFun.istype(list),
-          #flsa.vFun.haslen(2), # can also be defined later on
+          flsa.vFun.istype(list, tuple),
       ]
     )
     # base class init
@@ -1443,25 +1476,30 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
   # --------------------------------------------------------------------------
   # PROPERTIES
   @property
-  def guess(self) -> float:
-    ''' Guess for fsolve.
+  def guess(self) -> list:
+    ''' Guess values for nonlinear solver retries.
 
     Returns:
-      float : Guess.
+      list : Guess.
     '''
-    return self._initguess
+    return self._guess
 
   @guess.setter
   def guess(self, value: int | float | list) -> Any:
-    ''' Set initial guess for fsolve.
+    ''' Set initial guess values for nonlinear solver retries.
 
     Args:
       value (int | float | list): Guess.
     '''
-    self._initguess = float(value)
+    if value is None:
+      self._guess = [0.5, 2.0, 10.0, 50.0, 200.0]
+    elif isinstance(value, (list, tuple)):
+      self._guess = [float(item) for item in value]
+    else:
+      self._guess = [float(value)]
 
   @property
-  def Components(self) -> list:
+  def components(self) -> list:
     return self._items
 
   def getComp(self, idx: int) -> flsb.Comp_Base:
@@ -1499,7 +1537,7 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
     '''
 
     def F(Q1: float, Qtot: int | float) -> Any:
-      ''' fsolve equation for two parallel branches.
+      ''' Nonlinear equation for two parallel branches.
 
       Args:
           Q1 (float): guess for flow in branch 1 (in m3/h)
@@ -1512,13 +1550,36 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
       H1 = self._items[1].calcH(Qtot-Q1, sense, pin, pout)
       return (H0-H1).magnitude
 
-    lQ = flsa.toUnits(Q, u.m**3/u.h, magnitude=True)
-    # Solve the system of equations
-    result, self._infodict, ier, msg = fsolve(func=F, x0=self._initguess, args=lQ, full_output=1)
-    if ier != 1:
-      raise ValueError(f'Error in Parallel Component "{self._name}".calcH: {msg}')
+    lQ_mag = flsa.toUnits(Q, u.m**3/u.h).magnitude
+    # Initial guesses for retry strategy
+    x0_list = self._guess
+    last_msg = f'Comp_Parallel2 "{self._name}".calcH: no convergence.'
+    methods = ('hybr', 'lm', 'df-sane')
+    # Solve the system of equations with retry guesses
+    for x0 in x0_list:
+      solved = False
+      for method in methods:
+        root_res = root(F, x0=x0, args=(lQ_mag,), method=method)
+        self._infodict = {'solver': f'root:{method}', 'result': root_res}
+        if not root_res.success:
+          msg = str(root_res.message)
+          last_msg = f'Comp_Parallel2 "{self._name}".calcH: {msg}' if msg else f'Comp_Parallel2 "{self._name}".calcH: root[{method}] failed with status={root_res.status}'
+          continue
+        q_mag = float(root_res.x.flat[0])
+        if not np.isfinite(q_mag):
+          last_msg = f'Comp_Parallel2 "{self._name}".calcH: invalid root Q={q_mag}'
+          continue
+        solved = True
+        break
+      if solved:
+        break
+    else:
+      self._Q = [lQ_mag *u.m**3/u.h, 0.0 *u.m**3/u.h]
+      self._H = [0.0 *u.m] * 2
+      warnings.warn(last_msg, RuntimeWarning, stacklevel=2)
+      return self._H[0]
     # process result
-    self._Q = [result[0] *u.m**3/u.h, (lQ - result[0]) *u.m**3/u.h]
+    self._Q = [q_mag *u.m**3/u.h, (lQ_mag - q_mag) *u.m**3/u.h]
     self._H = [self._items[0].calcH(self._Q[0], sense, pin, pout), self._items[1].calcH(self._Q[1], sense, pin, pout)]
     return self._H[0]
 

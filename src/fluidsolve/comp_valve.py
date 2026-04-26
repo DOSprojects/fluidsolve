@@ -337,7 +337,7 @@ class Comp_Valve_DS(Comp_Valve):  # pylint: disable=invalid-name
     if state == 1:
       return [(1, 2), (3, 4)]
     elif state == 2:
-      return [(1, 3), (2, 4)]
+      return [(1, 2), (1, 3), (3, 4)]
     else:
       return []
 

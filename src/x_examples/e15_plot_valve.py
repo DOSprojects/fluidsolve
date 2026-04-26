@@ -1,5 +1,5 @@
 '''
-  e14_plot_kv_valve.py
+  e15_plot_valve.py
 
   Static Q-H plotting example.
   Displays one pump curve together with one system curve.
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     name='path 1',
     components=[
       {'comp': fls.getComp(comp='Tube', L=L, D=dia)},
-      {'comp': fls.getComp(comp='Valve_Kv', D=dia, Kvs= 25, state=0.5)},
+      {'comp': fls.getComp(comp='Valve_01', D=dia, state=1)},
     ],
   )
   #
@@ -78,11 +78,10 @@ if __name__ == '__main__':
     circuits=[system],
     wpoints=[wpt],
     title='Pumpcurve and system curve with valve',
-    ymax=50,
     sliders=[
       dict(label='L (m)', vmin=100, vmax=800, vinit=system.getComp(0)['comp'].L.magnitude, fun=fun1),
       dict(label='P speed (rpm)', vmin=1450, vmax=2900, vinit=2900, fun=fun2),
-      dict(label='V state (%)', vmin=0.0, vmax=1.0, vstep=0.01, vinit=system.getComp(1)['comp'].state, fun=fun3),
+      dict(label='V state', vmin=0, vmax=1, vinit=system.getComp(1)['comp'].state, fun=fun3),
     ]
   )
   plt.show()

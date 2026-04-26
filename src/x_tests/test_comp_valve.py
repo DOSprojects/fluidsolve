@@ -15,10 +15,16 @@ def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:

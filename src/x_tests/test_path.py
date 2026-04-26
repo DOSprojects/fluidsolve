@@ -15,10 +15,16 @@ def test_public_classes_exist(name: str) -> None:
   obj = getattr(module_under_test, name)
   assert inspect.isclass(obj)
 
-@pytest.mark.parametrize('name', [])
-def test_public_functions_are_callable(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert callable(obj)
+def test_public_functions_are_callable() -> None:
+  public_function_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isfunction)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_function_names:
+    obj = getattr(module_under_test, name)
+    assert callable(obj)
 
 @pytest.mark.parametrize('name', ['Quantity', 'u'])
 def test_public_variables_exist(name: str) -> None:
@@ -60,8 +66,8 @@ class DummyValve(module_under_test.flsb.Comp_Base):
 def test_path_defaults_and_accessors() -> None:
   path = module_under_test.Path(name='Loop')
 
-  assert path.Name == 'Loop'
-  assert not path.Components
+  assert path.name == 'Loop'
+  assert not path.components
   assert path.componentsString() == '   <none>\n\n'
   assert str(path) == 'Path "Loop"\n Components:\n   <none>\n\n'
 

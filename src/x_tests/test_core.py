@@ -10,10 +10,16 @@ import fluidsolve.core as module_under_test
 def test_module_importable() -> None:
   assert module_under_test is not None
 
-@pytest.mark.parametrize('name', [])
-def test_public_classes_exist(name: str) -> None:
-  obj = getattr(module_under_test, name)
-  assert inspect.isclass(obj)
+def test_public_classes_exist() -> None:
+  public_class_names = [
+    name
+    for name, obj in inspect.getmembers(module_under_test, inspect.isclass)
+    if obj.__module__ == module_under_test.__name__ and not name.startswith('_')
+  ]
+
+  for name in public_class_names:
+    obj = getattr(module_under_test, name)
+    assert inspect.isclass(obj)
 
 @pytest.mark.parametrize(
   'name',

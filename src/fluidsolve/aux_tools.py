@@ -746,3 +746,32 @@ class vFun (): # pylint: disable=invalid-name
         raise ValueError(f'Error: file {argvalue} is not executable.')
       return argvalue
     return validate
+
+  @staticmethod
+  def islambda(condition: Any, need: bool=True, errmsg: str=None) -> Callable[..., Any]:
+    ''' Check if a callable condition is fulfilled for the current argument.
+
+    The condition must be a callable of the form ``condition(argvalue) -> bool``.
+
+    Args:
+      condition (Any): Callable condition evaluated on the current argument.
+      need (bool, optional): if False, this argument can also be None
+      errmsg (str, optional): The eventual error message.
+
+    Returns:
+      Callable[..., Any]: The validator function.
+
+    Example:
+      ``vFun.islambda(lambda x: x > 0, errmsg='must be positive')``
+    '''
+    def validate(_argname: Any, argvalue: Any) -> Any:
+      if not need and argvalue is None:
+        return None
+      if not callable(condition):
+        raise TypeError('Error: condition must be callable')
+      if not condition(argvalue):
+        if errmsg is not None:
+          raise ValueError(errmsg)
+        raise ValueError(f'Error: {argvalue} does not match the condition.')
+      return argvalue
+    return validate

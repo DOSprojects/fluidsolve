@@ -1,4 +1,4 @@
-'''Behavioral unit tests for fluidsolve.aux_tools.'''
+'''Unit tests for fluidsolve.aux_tools.'''
 
 # PYLINT DIRECTIVES
 # pylint: disable=invalid-name,missing-function-docstring
@@ -188,6 +188,14 @@ def test_vfun_inlist_supports_tuple_input_and_inverse() -> None:
   assert inverse_validator('k', 'z') == 'z'
   with pytest.raises(ValueError, match='may not be one of x,y'):
     inverse_validator('k', 'x')
+
+def test_vfun_islambda_supports_callable_and_optional_none() -> None:
+  assert module_under_test.vFun.islambda(lambda value: value > 0)('n', 5) == 5
+  assert module_under_test.vFun.islambda(lambda value: value > 0, need=False)('n', None) is None
+  with pytest.raises(ValueError, match='must be positive'):
+    module_under_test.vFun.islambda(lambda value: value > 0, errmsg='must be positive')('n', -1)
+  with pytest.raises(TypeError, match='condition must be callable'):
+    module_under_test.vFun.islambda(True)('n', 1)
 
 def test_vfun_regex_inv_true_requires_match() -> None:
   validator = module_under_test.vFun.regex(r'^[A-Z]+$', inv=True)
