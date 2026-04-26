@@ -161,10 +161,7 @@ class Comp_Hstatic(flsb.Comp_Base):  # pylint: disable=invalid-name
     Returns:
       str: String representation.
     '''
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    if self._Hs is not None:
-      txt += f' Hs:{self._Hs:.2f~P} '
+    txt = super().toString(detail).rstrip('\n') + f', Hs: {self._Hs:.2f~P}\n'
     return txt
 
 # =============================================================================
@@ -238,16 +235,13 @@ class Comp_Appendage(flsb.Comp_Base):  # pylint: disable=invalid-name
     return flsu.KtoH(self.calcK(lQ, sense, pin, pout), flsu.Qtov(lQ, self._D)) * self._sign
 
   def toString(self, detail: int=0) -> str:
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    if (self._L is not None) and (self._L > 0):
-      txt += f' L:{self._L:.2f~P} '
-    if (self._D is not None) and (self._D > 0):
-      txt += f' D:{self._D:.2f~P} '
+    txt = super().toString(detail).rstrip('\n')
     if hasattr(self, '_Hs'):
-      txt += f' Hs:{self._Hs:.2f~P} '
-    if hasattr(self, '_e') and (self._e > 0):
-      txt += f' e:{self._e:.2f~P} '
+      txt += f', Hs: {self._Hs:.2f~P}'
+    if (self._L is not None) and (self._L > 0):
+      txt += f', L: {self._L:.2f~P}'
+    if (self._D is not None) and (self._D > 0):
+      txt += f', D: {self._D:.2f~P}\n'
     return txt
 
 # =============================================================================
@@ -1121,11 +1115,10 @@ class Comp_PHE(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       str: String representation.
     '''
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    txt += f' Nplaten: {self._Nplaten}, Npasses: {self._Npasses}, Phi: {self._Phi}'
-    txt += f' Lplaat: {self._Lplaat:.1f~P}, Bplaat: {self._Bplaat:.1f~P}, Dkanaal: {self._Dkanaal:.1f~P}'
-    txt += f' Npoorten: {self._Npoorten}, Dpoort: {self._Dpoort:.1f~P}\n'
+    txt = super().toString(detail).rstrip('\n')
+    txt += f', Nplates: {self._Nplaten}, Npasses: {self._Npasses}, Phi: {self._Phi}'
+    txt += f', Lplate: {self._Lplaat:.1f~P}, Bplate: {self._Bplaat:.1f~P}, Dchannel: {self._Dkanaal:.1f~P}'
+    txt += f', Nports: {self._Npoorten}, Dport: {self._Dpoort:.1f~P}\n'
     return txt
 
 # =============================================================================
@@ -1233,10 +1226,20 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       str: String representation.
     '''
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    for i, item in enumerate(self._items):
-      txt += f' {i}: {item}\n'
+    txt = super().toString(detail)
+    txt += f' Sub-Components: ({len(self._items)}):\n'
+    if not self._items:
+      txt += '  ---\n'
+    else:
+      idx_w = max(3, len(str(len(self._items))))
+      name_w = max(4, max(len(getattr(item, 'name', item.__class__.__name__)) for item in self._items))
+      type_w = max(4, max(len(item.__class__.__name__) for item in self._items))
+      ports_w = len('1 -> 2')
+      header = f'{"idx":>{idx_w}} | {"Comp":<{name_w}} | {"Type":<{type_w}} | {"Dir":<3} | {"Ports":<{ports_w}}'  # pylint: disable=inconsistent-quotes
+      txt += '  ' + header + f'\n  {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for i, item in enumerate(self._items, start=1):
+        compstr = getattr(item, 'name', '-')
+        txt += f'  {i:>{idx_w}} | {compstr:<{name_w}} | {item.__class__.__name__:<{type_w}} |  →  | 1 -> 2\n'
     return txt
 
 # =============================================================================
@@ -1417,10 +1420,20 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       str: String representation.
     '''
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    for i, item in enumerate(self._items):
-      txt += f' {i}: {item}\n'
+    txt = super().toString(detail)
+    txt += f' Sub-Components: ({len(self._items)}):\n'
+    if not self._items:
+      txt += '  ---\n'
+    else:
+      idx_w = max(3, len(str(len(self._items))))
+      name_w = max(4, max(len(getattr(item, 'name', item.__class__.__name__)) for item in self._items))
+      type_w = max(4, max(len(item.__class__.__name__) for item in self._items))
+      ports_w = len('1 -> 2')
+      header = f'{"idx":>{idx_w}} | {"Comp":<{name_w}} | {"Type":<{type_w}} | {"Dir":<3} | {"Ports":<{ports_w}}'  # pylint: disable=inconsistent-quotes
+      txt += '  ' + header + f'\n  {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for i, item in enumerate(self._items, start=1):
+        compstr = getattr(item, 'name', '-')
+        txt += f'  {i:>{idx_w}} | {compstr:<{name_w}} | {item.__class__.__name__:<{type_w}} |  →  | 1 -> 2\n'
     return txt
 
 # =============================================================================
@@ -1594,8 +1607,18 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       str: String representation.
     '''
-    sdetail = detail // 10
-    txt = super().toString(sdetail) + '\n'
-    for i, item in enumerate(self._items):
-      txt += f' {i}: {item}\n'
+    txt = super().toString(detail)
+    txt += f' Sub-Components: ({len(self._items)}):\n'
+    if not self._items:
+      txt += '  ---\n'
+    else:
+      idx_w = max(3, len(str(len(self._items))))
+      name_w = max(4, max(len(getattr(item, 'name', item.__class__.__name__)) for item in self._items))
+      type_w = max(4, max(len(item.__class__.__name__) for item in self._items))
+      ports_w = len('1 -> 2')
+      header = f'{"idx":>{idx_w}} | {"Comp":<{name_w}} | {"Type":<{type_w}} | {"Dir":<3} | {"Ports":<{ports_w}}'  # pylint: disable=inconsistent-quotes
+      txt += '  ' + header + f'\n  {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
+      for i, item in enumerate(self._items, start=1):
+        compstr = getattr(item, 'name', '-')
+        txt += f'  {i:>{idx_w}} | {compstr:<{name_w}} | {item.__class__.__name__:<{type_w}} |  →  | 1 -> 2\n'
     return txt

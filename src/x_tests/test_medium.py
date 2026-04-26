@@ -107,6 +107,7 @@ def test_medium_name_setter_and_text_representations() -> None:
 
   text_basic = str(medium)
   text_detail = medium.toString(detail=1)
+  text_formatted = f'{medium:1}'
   rep = repr(medium)
 
   assert medium.name == 'new_name'
@@ -116,6 +117,7 @@ def test_medium_name_setter_and_text_representations() -> None:
   assert 'T:' in text_detail
   assert 'p:' in text_detail
   assert 'k:' in text_detail
+  assert text_formatted == text_detail
   assert 'Medium(name="new_name", prd="water"' in rep
 
 def test_medium_repr_for_empty_name_uses_default_signature() -> None:

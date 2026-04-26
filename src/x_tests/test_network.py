@@ -89,10 +89,10 @@ def test_network_defaults_and_empty_strings() -> None:
   assert not network.edges
   assert not network.segments
   assert not network.result
-  assert network.nodeString() == '   <none>\n'
-  assert network.segmentsString() == '   <none>\n\n'
-  assert network.resultString() == '   <empty: run calcNetwork()>\n\n'
-  assert network.functionString() == 'No segments in network\n'
+  assert network.nodeString() == ' Nodes (0):\n  ---\n'
+  assert network.segmentsString() == ' Segments (0):\n  ---\n'
+  assert network.resultString() == ' Result:\n   not yet calculated\n'
+  assert network.functionString() == ' Functions: Combined incidence matrix (B:0) (C:0):\n  No segments in network\n'
 
 def test_network_add_components_validates_entries() -> None:
   comp = DummyResist('R1')
@@ -117,9 +117,9 @@ def test_network_builds_segments_adjacency_tree_and_cycle_matrices() -> None:
   assert [item['comp'].name for item in network.components] == ['P1', 'R1', 'R2']
   assert list(network.nodes) == ['A', 'B', 'C']
   assert len(network.segments) == 3
-  assert set(network.edges) == {'P1:A->B', 'R1:B->C', 'R2:C->A'}
-  assert network.adjacency['A'][0] == ('P1:A->B', 'B', 1)
-  assert ('R2:C->A', 'C', -1) in network.adjacency['A']
+  assert set(network.edges) == {'P1:A-B', 'R1:B-C', 'R2:C-A'}
+  assert network.adjacency['A'][0] == ('P1:A-B', 'B', 1)
+  assert ('R2:C-A', 'C', -1) in network.adjacency['A']
   assert len(network.spanningTree) == 2
   assert len(network.fundamentalCycles) == 1
   assert network.funcs['B'].shape == (3, 3)
@@ -146,7 +146,7 @@ def test_network_validation_requires_source_and_resistance_in_loops() -> None:
     )
 
 def test_network_detects_duplicate_segments() -> None:
-  with pytest.raises(ValueError, match='Duplicate segment R1:A->B'):
+  with pytest.raises(ValueError, match='Duplicate segment R1:A-B'):
     module_under_test.Network(
       components=[
         {'comp': DummyResist('R1'), 'nodes': ['A', 'B']},
@@ -166,7 +166,7 @@ def test_network_calc_network_returns_segment_results(monkeypatch) -> None:
   )
   result = network.calcNetwork(guess=1.2)
   assert len(result) == 1
-  assert result[0]['segment'] == 'R1:A->B'
+  assert result[0]['segment'] == 'R1:A-B'
   assert result[0]['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.5)
   assert result[0]['H'].to(module_under_test.u.m).magnitude == pytest.approx(-5.0)
   assert network.result == result
@@ -230,35 +230,37 @@ def test_network_string_helpers_include_topology_and_results() -> None:
   network = _triangle_network()
   network._result = [
     {
-      'segment': 'P1:A->B',
+      'segment': 'P1:A-B',
       'Q': 2.0 * module_under_test.u.m**3 / module_under_test.u.h,
       'H': 8.0 * module_under_test.u.m,
     }
   ]
 
   text = network.toString(detail=1)
+  text_formatted = f'{network:1}'
   validation = network.networkValidationtoString()
 
   assert 'Network "Loop"' in text
-  assert 'Nodes:' in text
+  assert text_formatted == text
+  assert 'Nodes (3):' in text
   assert 'A, B, C' in text
-  assert 'Segments:' in text
-  assert 'Adjacency:' in text
+  assert 'Segments (3):' in text
+  assert 'Adjacency (3):' in text
   assert 'node' in text
   assert 'links' in text
   assert 'A    |' in text
-  assert 'P1:A->B' in text
+  assert 'P1:A-B' in text
   assert '-> B' in text
-  assert 'SpanningTree:' in text
+  assert 'SpanningTree' in text
   assert 'segment' in text
   assert 'path' in text
   assert 'sense' in text
   assert ' | +1' in text
-  assert 'FundamentalCycles:' in text
+  assert 'FundamentalCycles' in text
   assert 'Loop 1:' in text
-  assert 'Functions: Combined incidence matrix [B; C]:' in text
+  assert 'Functions: Combined incidence matrix (B:3) (C:1):' in text
   assert 'Result:' in text
-  assert 'P1:A->B' in text
+  assert 'P1:A-B' in text
   assert 'Loop 1:' in validation
   assert 'Power' in validation
   assert 'Resist' in validation
@@ -274,7 +276,9 @@ def test_network_rebuilds_segments_when_valve_state_changes() -> None:
     ],
   )
 
-  monkey_root = lambda *args, **kwargs: types.SimpleNamespace(success=True, x=np.array([1.0, 1.0, 1.0, 1.0]), message='ok', status=1)
+  def monkey_root(*_args, **_kwargs):
+    return types.SimpleNamespace(success=True, x=np.array([1.0, 1.0, 1.0, 1.0]), message='ok', status=1)
+
   original_root = module_under_test.root
   module_under_test.root = monkey_root
 
@@ -287,39 +291,39 @@ def test_network_rebuilds_segments_when_valve_state_changes() -> None:
   try:
     network.calcNetwork(guess=1.0)
     keys_state_1 = set(network.segments.keys())
-    assert 'V1:B->C' in keys_state_1
-    assert 'V1:B->D' in keys_state_1
-    assert network.segments['V1:B->C']['use'] is True
-    assert network.segments['V1:B->D']['use'] is False
+    assert 'V1:B-C' in keys_state_1
+    assert 'V1:B-D' in keys_state_1
+    assert network.segments['V1:B-C']['use'] is True
+    assert network.segments['V1:B-D']['use'] is False
     text_state_1 = network.segmentsString()
     assert 'comp' in text_state_1
     assert 'nodes' in text_state_1
     assert 'type' in text_state_1
     assert 'ports' in text_state_1
-    line_1_used = _line_for('V1:B->C', text_state_1)
-    line_1_unused = _line_for('V1:B->D', text_state_1)
+    line_1_used = _line_for('V1:B-C', text_state_1)
+    line_1_unused = _line_for('V1:B-D', text_state_1)
     assert '[unused]' not in line_1_used
-    assert line_1_used.startswith('   V1:B->C')
+    assert line_1_used.startswith('   V1:B-C')
     assert ' | ' in line_1_used
     assert 'Comp_Valve_3W' in line_1_used
     assert '1 → 3' in line_1_unused
-    assert line_1_unused.startswith('[[ V1:B->D')
+    assert line_1_unused.startswith('[[ V1:B-D')
     assert line_1_unused.endswith(' ]]')
 
     network.components[1]['comp'].state = 2
     network.calcNetwork(guess=1.0)
     keys_state_2 = set(network.segments.keys())
-    assert 'V1:B->D' in keys_state_2
-    assert 'V1:B->C' in keys_state_2
-    assert network.segments['V1:B->C']['use'] is False
-    assert network.segments['V1:B->D']['use'] is True
+    assert 'V1:B-D' in keys_state_2
+    assert 'V1:B-C' in keys_state_2
+    assert network.segments['V1:B-C']['use'] is False
+    assert network.segments['V1:B-D']['use'] is True
     text_state_2 = network.segmentsString()
-    line_2_unused = _line_for('V1:B->C', text_state_2)
-    line_2_used = _line_for('V1:B->D', text_state_2)
-    assert line_2_unused.startswith('[[ V1:B->C')
+    line_2_unused = _line_for('V1:B-C', text_state_2)
+    line_2_used = _line_for('V1:B-D', text_state_2)
+    assert line_2_unused.startswith('[[ V1:B-C')
     assert line_2_unused.endswith(' ]]')
     assert '[unused]' not in line_2_used
-    assert line_2_used.startswith('   V1:B->D')
+    assert line_2_used.startswith('   V1:B-D')
     assert ' | ' in line_2_used
   finally:
     module_under_test.root = original_root

@@ -69,7 +69,7 @@ def test_path_defaults_and_accessors() -> None:
   assert path.name == 'Loop'
   assert not path.components
   assert path.componentsString() == '   <none>\n\n'
-  assert str(path) == 'Path "Loop"\n Components:\n   <none>\n\n'
+  assert str(path) == 'Path "Loop"\n'
 
 def test_path_add_components_normalizes_two_port_entries() -> None:
   comp = DummyComp('P1', head=2.0)
@@ -161,10 +161,10 @@ def test_path_to_string_formats_component_listing_and_detail() -> None:
   text = path.toString(detail=1)
 
   assert 'Path "Loop"' in text
-  assert 'Components:' in text
+  assert 'Components (2):' in text
+  assert 'idx | Comp' in text
   assert 'PumpA' in text
   assert 'Valve1' in text
-  assert 'dir: \u2192' in text
-  assert 'dir: \u2190' in text
-  assert 'ports: 3 -> 1' in text
-  assert 'Count: 2' in text
+  assert ' |  \u2192  | ' in text
+  assert ' |  \u2190  | ' in text
+  assert '3 -> 1' in text

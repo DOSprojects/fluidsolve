@@ -313,6 +313,15 @@ class Medium ():
     '''
     return self.toString(0)
 
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail)
+
   def toString(self, detail: int=0) -> str:
     ''' Return string representation.
 
@@ -322,16 +331,11 @@ class Medium ():
     Returns:
       str: String representation.
     '''
+    name = self._name if self._name else '-'
     if detail == 0:
-      if self._name=='':
-        return f'Medium - : rho:{self._rho:.2f~P}, mu:{self._mu:.2e~P}'
-      else:
-        return f'Medium {self._name}: rho:{self._rho:.2f~P}, mu:{self._mu:.2e~P}'
+      return f'Medium {name}: rho: {self._rho:.2f~P}, mu: {self._mu:.2e~P}'
     else:
-      if self._name=='':
-        return f'Medium - : T:{self._T:.2f~P}, p:{self._p:.2f~P}, rho:{self._rho:.2f~P}, mu:{self._mu:.2e~P}, k:{self._k:.2e~P}'
-      else:
-        return f'Medium {self._name} : T:{self._T:.2f~P}, p:{self._p:.2f~P}, rho:{self._rho:.2f~P}, mu:{self._mu:.2e~P}, k:{self._k:.2e~P}'
+      return f'Medium {name} : T: {self._T:.2f~P}, p: {self._p:.2f~P}, rho: {self._rho:.2f~P}, mu: {self._mu:.2e~P}, k: {self._k:.2e~P}'
 
   def __repr__(self) -> str:
     ''' Representation of the medium object.

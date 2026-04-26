@@ -6,8 +6,8 @@
 import inspect
 from types import SimpleNamespace
 import pytest
-import fluidsolve.comp_resist as module_under_test
 import numpy as np
+import fluidsolve.comp_resist as module_under_test
 
 def test_module_importable() -> None:
   assert module_under_test is not None
@@ -42,7 +42,7 @@ def test_comp_hstatic_properties_calcH_and_to_string() -> None:
 
   comp.Hs = 4
   assert comp.Hs == 4 * module_under_test.u.m
-  assert 'Hs:4.00 m' in comp.toString()
+  assert 'Hs: 4.00 m' in comp.toString()
 
 def test_comp_appendage_calcH_uses_loss_coefficient_and_to_string() -> None:
   class FixedKAppendage(module_under_test.Comp_Appendage):
@@ -59,8 +59,8 @@ def test_comp_appendage_calcH_uses_loss_coefficient_and_to_string() -> None:
 
   expected = module_under_test.flsu.KtoH(4.0, module_under_test.flsu.Qtov(10 * module_under_test.u.m**3 / module_under_test.u.h, comp._D)) * comp.sign  # pylint: disable=protected-access
   assert head.to(module_under_test.u.m).magnitude == pytest.approx(expected.to(module_under_test.u.m).magnitude)
-  assert 'L:2.00 m' in comp.toString()
-  assert 'D:50.00 mm' in comp.toString()
+  assert 'L: 2.00 m' in comp.toString()
+  assert 'D: 50.00 mm' in comp.toString()
 
 def test_comp_tube_properties_and_calcH_with_static_head(monkeypatch) -> None:
   tube = module_under_test.Comp_Tube(L=10, D=50, Hs_pos=2)
@@ -151,7 +151,9 @@ def test_comp_serial_combines_components_and_builds_profile() -> None:
   comp_c = FixedHead('c', 4)
   assert serial.setComp(1, comp_c) is comp_c
   assert serial.addComp(comp_b) is comp_b
-  assert '0:' in serial.toString()
+  assert 'Sub-Components: (3):' in serial.toString()
+  assert 'idx | Comp' in serial.toString()
+  assert 'a' in serial.toString()
 
 def test_comp_parallel_validates_guess_and_uses_root_result(monkeypatch) -> None:
   class FixedHead(module_under_test.flsb.Comp_Base):
@@ -179,7 +181,8 @@ def test_comp_parallel_validates_guess_and_uses_root_result(monkeypatch) -> None
   head = parallel.calcH(2)
   assert head.to(module_under_test.u.m).magnitude == pytest.approx(2.0)
   assert list(parallel.getQ().magnitude) == pytest.approx([0.5, 1.5])
-  assert '0:' in parallel.toString()
+  assert 'Sub-Components: (2):' in parallel.toString()
+  assert 'idx | Comp' in parallel.toString()
   assert parallel.components == [comp_a, comp_b]
 
 def test_comp_parallel2_uses_solver_result_and_reports_failure(monkeypatch) -> None:
@@ -220,3 +223,5 @@ def test_comp_parallel2_uses_solver_result_and_reports_failure(monkeypatch) -> N
     parallel.calcH(2)
   assert parallel.getQ()[0].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(2.0)
   assert parallel.getQ()[1].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude == pytest.approx(0.0)
+  assert 'Sub-Components: (2):' in parallel.toString()
+  assert 'idx | Comp' in parallel.toString()

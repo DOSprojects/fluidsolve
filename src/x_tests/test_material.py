@@ -79,6 +79,7 @@ def test_material_to_string_and_repr_cover_detail_levels() -> None:
 
   text_basic = material.toString()
   text_detail = material.toString(1)
+  text_formatted = f'{material:1}'
   rep = repr(material)
 
   assert 'Material steel:' in text_basic
@@ -86,6 +87,7 @@ def test_material_to_string_and_repr_cover_detail_levels() -> None:
   assert 'kg/m' in text_basic
   assert 'T:' in text_detail
   assert 'k:' in text_detail
+  assert text_formatted == text_detail
   assert 'Material(name="steel"' in rep
 
 def test_material_update_product_is_safe_without_library_backend() -> None:

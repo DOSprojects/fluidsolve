@@ -105,15 +105,20 @@ def test_comp_base_string_representation_contains_metadata() -> None:
   comp = module_under_test.Comp_Base(name='base', state=2)
 
   text = str(comp)
-  assert 'Component "base"' in text
-  assert '[Base:Base]' in text
-  assert 'state=2' in text
-  assert 'Sign=-' in text
+  assert 'Component: "base" [Base]' == text
+
+def test_comp_base_format_representation_supports_detail() -> None:
+  comp = module_under_test.Comp_Base(name='base', state=2)
+
+  text = f'{comp:1}'
+  assert 'Component: "base" [Base:Base]' in text
+  assert 'state: 2' in text
+  assert 'sign: -1' in text
 
 def test_comp_dummy_initializes_as_resistance() -> None:
   comp = module_under_test.Comp_Dummy(name='dummy')
 
-  assert comp.group == 'Resistance'
+  assert comp.group == 'Base'
   assert comp.part == 'Dummy'
   assert comp.name == 'dummy'
   assert isinstance(comp.medium, module_under_test.flsme.Medium)
@@ -135,7 +140,11 @@ def test_comp_reverse_delegates_calc_methods_and_attributes() -> None:
   assert comp.calcK(5, sense=1, pin=2, pout=3) == (5, -1, 2, 3)
   assert comp.calcH(5, sense=1, pin=2, pout=3) == -3 * module_under_test.u.m
   assert comp.name == 'rev'
-  assert comp.part == wrapped.part
+  assert comp.part == 'Reverse'
+  assert 'reverse:' in str(comp)
+  assert '"wrapped"  [Base]' in str(comp)
+  assert ' reverse' in f'{comp:1}'
+  assert 'Component: "wrapped" [Base:Base]' in f'{comp:1}'
 
 def test_comp_reverse_raises_when_wrapped_component_has_no_calck() -> None:
   class HeadOnlyComp(module_under_test.Comp_Base):

@@ -253,6 +253,15 @@ class Material ():
     '''
     return self.toString(0)
 
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail)
+
   def toString(self, detail: int=0) -> str:
     ''' String representation. Can be in more or less detail.
 

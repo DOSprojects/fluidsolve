@@ -283,7 +283,13 @@ class Comp_Base:  # pylint: disable=invalid-name
           msg = str(root_res.message)
           last_msg = msg if msg else f'root[{method}] failed with status={root_res.status}'
           continue
-        q_mag = float(root_res.x.flat[0])
+        x_val = root_res.x
+        if hasattr(x_val, 'flat'):
+          q_mag = float(x_val.flat[0])
+        elif isinstance(x_val, (list, tuple)):
+          q_mag = float(x_val[0])
+        else:
+          q_mag = float(x_val)
         if not math.isfinite(q_mag):
           last_msg = f'Invalid root Q={q_mag}'
           continue
@@ -300,18 +306,25 @@ class Comp_Base:  # pylint: disable=invalid-name
   # --------------------------------------------------------------------------
   # REPRESENTATION
   def __str__(self) -> str:
-    return self.toString()
+    return self.toString(detail=0)
+
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail=detail)
 
   def toString(self, detail: int = 0) -> str:
     ''' Return a string representation. '''
-    txt = (
-      f'Component "{self._name}" '
-      f'[{self._group}:{self._part}] '
-      f'ports={self._nports}, '
-      f'state={self._state}, '
-      f'Sign={"+" if self._sign > 0 else "-"}, '  # pylint: disable=inconsistent-quotes
-      f'{self._medium.toString(detail)}'
-    )
+    if detail == 0:
+      txt = f'Component: "{self._name}" [{self._part}]'  # pylint: disable=inconsistent-quotes
+    else:
+      txt = f'Component: "{self._name}" [{self._group}:{self._part}] ports: {self._nports}, sign: {"+1" if self._sign > 0 else "-1"}\n' # pylint: disable=inconsistent-quotes
+      txt += f' e: {self._e:.2f~P}, m: {self._medium.toString(detail)}\n'
+      txt += f' state: {self._state}\n'
     return txt
 
 # =============================================================================
@@ -321,7 +334,6 @@ class Comp_Dummy(Comp_Base):  # pylint: disable=invalid-name
   ''' Dummy / empty component. '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES
-  _group : str = 'Resistance'
   _part  : str = 'Dummy'
 
   # --------------------------------------------------------------------------
@@ -341,7 +353,7 @@ class Comp_Reverse(Comp_Base):  # pylint: disable=invalid-name
   ''' Adapter that reverses flow direction of a wrapped component. '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES
-  _group  : str = 'Reverse'
+  _part  : str = 'Reverse'
 
   # --------------------------------------------------------------------------
   # INITIALIZE
@@ -362,6 +374,19 @@ class Comp_Reverse(Comp_Base):  # pylint: disable=invalid-name
 
   def calcH(self, Q: Any, sense: int=1, pin: int=1, pout:int=2) -> float:
     return self._rev.calcH(Q, -sense, pin, pout)
+
+  # --------------------------------------------------------------------------
+  # REPRESENTATION
+  def toString(self, detail: int = 0) -> str:
+    if detail == 0:
+      txt = f'Component: "{self._name}" [{self._part}]\n'  # pylint: disable=inconsistent-quotes
+      txt += f' reverse: "{self._rev.name}"  [{self._rev.part}]\n'
+    else:
+      txt = f'Component: "{self._name}" [{self._group}:{self._part}]\n'  # pylint: disable=inconsistent-quotes
+      txt += ' reverse'
+      rev_txt = self._rev.toString(detail)
+      txt += '\n'.join(f'  {line}' for line in rev_txt.splitlines()) + '\n'
+    return txt
 
   # --------------------------------------------------------------------------
   # TRANSPARENT DELEGATION

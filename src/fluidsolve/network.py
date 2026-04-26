@@ -501,6 +501,15 @@ class Network:
     '''
     return self.toString(detail=0)
 
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail=detail)
+
   def toString(self, detail: int = 0) -> str:
     ''' Return a formatted multi-line network description.
 
@@ -602,7 +611,7 @@ class Network:
     Returns:
       str: Spanning tree section text.
     '''
-    txt = ' SpanningTree ({len(self._spanningtree)}):\n'
+    txt = f' SpanningTree ({len(self._spanningtree)}):\n'
     if not self._spanningtree:
       txt += '  ---\n'
     else:

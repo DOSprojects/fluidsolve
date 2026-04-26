@@ -141,11 +141,23 @@ class Wpoint ():
     '''
     return self
 
-  def __str__(self) -> str:
+  def toString(self, detail: int=0) -> str:  # pylint: disable=unused-argument
     if self._name=='':
       return f'Pt: Q: {self._Q.to(u.m**3/u.h):.2f~P}, H: {self.H.to(u.m):.2f~P}'
     else:
       return f'Pt {self._name}: Q: {self._Q.to(u.m**3/u.h):.2f~P}, H: {self.H.to(u.m):.2f~P}'
+
+  def __str__(self) -> str:
+    return self.toString(0)
+
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail)
 
   def __repr__(self) -> str:
     if self._name=='':
@@ -243,7 +255,13 @@ def calcOperatingPoint(c1: Any, c2:Any, guess: Any=None) -> tuple:
         msg = str(root_res.message)
         last_msg = f'calcOperatingPoint({c1.name}, {c2.name}): {msg}' if msg else f'calcOperatingPoint({c1.name}, {c2.name}): root[{method}] failed with status={root_res.status}'
         continue
-      q_mag = float(root_res.x.flat[0])
+      x_val = root_res.x
+      if hasattr(x_val, 'flat'):
+        q_mag = float(x_val.flat[0])
+      elif isinstance(x_val, (list, tuple)):
+        q_mag = float(x_val[0])
+      else:
+        q_mag = float(x_val)
       if not math.isfinite(q_mag) or q_mag < 0.0:
         last_msg = f'calcOperatingPoint({c1.name}, {c2.name}): invalid root Q={q_mag}'
         continue

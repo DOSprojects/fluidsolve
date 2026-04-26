@@ -67,7 +67,9 @@ def test_wpoint_string_and_repr_for_named_and_unnamed() -> None:
 
   assert str(unnamed).startswith('Pt: Q:')
   assert repr(unnamed).startswith('Pt: Q:')
+  assert f'{unnamed:1}' == str(unnamed)
   assert 'Pt NodeA:' in str(named)
+  assert f'{named:1}' == str(named)
   assert 'Pt NodeA:' in repr(named)
 
 def test_calc_operating_point_returns_expected_values(monkeypatch) -> None:

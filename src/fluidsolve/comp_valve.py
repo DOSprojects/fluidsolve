@@ -66,6 +66,7 @@ class Comp_Valve(flsb.Comp_Base):  # pylint: disable=invalid-name
   _group  : str = 'Resistance'
   _part   : str = 'Valve'
   _prefix : str = 'V'
+  _conn   : dict = {1: [[1,2]]}
 
   # --------------------------------------------------------------------------
   # INITIALIZE
@@ -101,6 +102,19 @@ class Comp_Valve(flsb.Comp_Base):  # pylint: disable=invalid-name
       value (int | float): State value.
     '''
     self._state = value
+
+  def connections(self, state: Any=None) -> Any:
+    '''Return open port connections for the given valve state.
+
+    Args:
+      state (Any, optional): Valve state override. Uses current state when omitted.
+
+    Returns:
+      Any: List of open port-pair tuples.
+    '''
+    if state is None:
+      state = self._state
+    return [tuple(conn) for conn in self._conn.get(state, [])]
 
   # --------------------------------------------------------------------------
   # PHYSICS
@@ -239,6 +253,10 @@ class Comp_Valve_Kv(Comp_Valve):  # pylint: disable=invalid-name
     '''
     self._R = value
 
+  def connections(self, state: Any=None) -> Any:  # pylint: disable=unused-argument
+    '''Return always-open hydraulic connectivity for throttling valves.'''
+    return [(1, 2)]
+
   # --------------------------------------------------------------------------
   # PHYSICS
   def calcK(self, Q: Quantity, sense: int=1, pin: int=1, pout: int=2) -> float:  # pylint: disable=unused-argument
@@ -275,13 +293,6 @@ class Comp_Valve_3W(Comp_Valve):  # pylint: disable=invalid-name
   _conn   : dict = {1: [[1,2]], 2: [[1,3]]}
 
   # --------------------------------------------------------------------------
-  # PROPERTIES
-  def connections(self, state: Any=None) -> Any:
-    if state is None:
-      state = self._state
-    return [tuple(conn) for conn in self._conn.get(state, [])]
-
-  # --------------------------------------------------------------------------
   # PHYSICS
   def calcK(self, Q: Quantity, sense: int=1, pin: int=1, pout: int=2) -> float:
     '''
@@ -314,32 +325,14 @@ class Comp_Valve_DS(Comp_Valve):  # pylint: disable=invalid-name
 
   Ports:
     state 1: 1-2 and 3-4 open
-    state 2: 1-3 and 2-4 open
+    state 2: 1-2 and 3-4 remain open, plus 1-3 opens
   '''
   # --------------------------------------------------------------------------
   # FIXED PROPERTIES
   _part   : str = 'Valve_DS'
   _nports : int = 4
-  _ports  : list = [[1,2], [2,3], [3,4]]
-  _conn   : dict = {1: [[1,2], [3,4]], 2: [[1,2], [2,3], [3,4]]}
-
-  # --------------------------------------------------------------------------
-  # PROPERTIES
-  def connections(self, state: Any=None) -> Any:
-    '''Return open port connections for the given valve state.
-
-    Args:
-      state (Any, optional): Valve state override. Uses current state when omitted.
-
-    Returns:
-      Any: List of open port-pair tuples.
-    '''
-    if state == 1:
-      return [(1, 2), (3, 4)]
-    elif state == 2:
-      return [(1, 2), (1, 3), (3, 4)]
-    else:
-      return []
+  _ports  : list = [[1,2], [1,3], [3,4]]
+  _conn   : dict = {1: [[1,2], [3,4]], 2: [[1,2], [1,3], [3,4]]}
 
   # --------------------------------------------------------------------------
   # PHYSICS

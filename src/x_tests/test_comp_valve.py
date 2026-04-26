@@ -68,6 +68,9 @@ def test_comp_valve_kv_properties_setters_and_calcK() -> None:
 
   assert valve.Kvs == 25
   assert valve.R == 4
+  assert valve.connections() == [(1, 2)]
+  assert valve.connections(state=0.0) == [(1, 2)]
+  assert valve.connections(state=0.73) == [(1, 2)]
   expected_kv_half = 25.0 * (4.0 ** 0.5 - 1.0) / 3.0
   assert valve.calcK(1, sense=1) == pytest.approx(module_under_test.flsu.KvtoK(expected_kv_half, 50 * module_under_test.u.mm))
 
@@ -111,13 +114,14 @@ def test_comp_valve_3w_connections_and_calcK_errors() -> None:
 def test_comp_valve_ds_connections_and_calcK_errors() -> None:
   valve = module_under_test.Comp_Valve_DS(D=50, state=1)
 
-  assert not valve.connections()
+  assert valve.connections() == [(1, 2), (3, 4)]
   assert valve.connections(state=1) == [(1, 2), (3, 4)]
-  assert valve.connections(state=2) == [(1, 3), (2, 4)]
+  assert valve.connections(state=2) == [(1, 2), (1, 3), (3, 4)]
   assert valve.calcK(1, pin=1, pout=2) == pytest.approx(0.7)
   assert valve.calcK(1, pin=2, pout=4) == 1e6
 
   valve.state = 2
+  assert valve.calcK(1, pin=1, pout=3) == pytest.approx(0.7)
   assert valve.calcK(1, pin=2, pout=4) == pytest.approx(0.7)
 
   valve.state = 9
