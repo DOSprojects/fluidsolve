@@ -1,17 +1,18 @@
 # pylint: disable=anomalous-backslash-in-string
 '''
-  e31_basic2.py
+e31_basic2.py
 
-  Basic network-module example.
-  Builds and solves representative network configurations.
+Basic network-module example.
+Builds and solves representative network configurations.
 
-  Network 2: single pump and two tubes in parallel.
-          A---pmp>---B
-          |          |
-          |          |100m
-          |          |
-          +----------C
-                90m
+Network 2: single pump and two tubes in parallel::
+
+        A---pmp>---B
+        |          |
+        |          |100m
+        |          |
+        +----------C
+              90m
 
 '''
 # =============================================================================

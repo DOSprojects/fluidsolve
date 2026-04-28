@@ -3,7 +3,7 @@ The ``network`` submodule
 
 This module models a hydraulic network as a graph and solves the resulting
 nonlinear flow problem from topology plus component head laws.
-It is based on the math graph theory.
+It is based on graph theory.
 For a more elaborate explanation we refer to the theory.
 Some of the terms used here are:
 
@@ -12,7 +12,7 @@ Graph theory is the study of mathematical objects known as graphs, which consist
 * **Nodes** or **Vertices**: are the fundamental units or points in a graph. Each node represents an entity or a location in the structure being modeled.
 * **Adjacent Nodes**: Two nodes that are directly connected by a segment.
 * **Segments** or **Edges**: are the connections or relationships between pairs of vertices. Each segment links two nodes, indicating a relationship or path between them.
-* **Path**: is a sequence of nodes where each adjacent pair is connected by an segment. They can be simple (no repeated nodes) or general (allowing repeats). For instance, In a graph with nodes A, B, C, and D, a path could be A → B → C → D, where each node is connected to the next by a segment.
+* **Path**: is a sequence of nodes where each adjacent pair is connected by a segment. They can be simple (no repeated nodes) or general (allowing repeats). For instance, in a graph with nodes A, B, C, and D, a path could be A → B → C → D, where each node is connected to the next by a segment.
 * **Cycle**: is a path that starts and ends at the same node, with no other repetitions of nodes or segments. Cycles can be simple (no repeated segments or nodes except for the start and end) or general. Here’s an example: In a graph with nodes A, B, C, and D, a simple cycle could be A → B → C → D → A.
 * **Connected graph**: A graph is connected when there is a path between every pair of nodes. In a connected graph, there is no unreachable node.
 
@@ -67,8 +67,8 @@ The network calculation solves a system of nonlinear equations made up of:
   [ 0.  0.  0.  0.  1. -1.  1.]
 
 
-* In every fundamental cycle the sum of heads has to be zero.
-  If there are ``m`` fundamental cycles, this contributes ``m`` additional
+* In every cycle-base loop the sum of heads has to be zero.
+  If there are ``m`` cycle-base loops, this contributes ``m`` additional
   equations. The corresponding loop matrix is stored in ``net.funcs['C']``.
   Every cycle equation has one entry per segment key: ``+1`` if the segment is
   traversed in the cycle direction, ``-1`` if traversed opposite, and ``0`` if

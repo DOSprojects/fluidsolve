@@ -1,18 +1,18 @@
 r'''
-  e30_basic1.py
+e30_basic1.py
 
-  Basic network-module example.
-  Builds and solves representative network configurations.
+Basic network-module example.
+Builds and solves representative network configurations.
 
-  Network 1: single pump and tube.
-      
-            +--pmp>--+
-           /          \
-          A            B
-           \          /
-            +--------+
-               100m
-            
+Network 1: single pump and tube::
+
+       +--pmp>--+
+      /          \
+      A            B
+      \          /
+       +--------+
+         100m
+
 '''
 # =============================================================================
 # PYLINT DIRECTIVES
