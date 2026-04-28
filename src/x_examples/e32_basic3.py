@@ -10,7 +10,7 @@ Network 3: two pumps and multiple tubes in a more complex configuration::
           50m        100m
       B----------C----------D
       ^          |          ^
-      pmp         |100m     pmp
+      pmp        |100m     pmp
       |          |          |
       A----------F----------E  
           150m        100m
