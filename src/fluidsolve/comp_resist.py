@@ -231,8 +231,9 @@ class Comp_Appendage(flsb.Comp_Base):  # pylint: disable=invalid-name
     Returns:
       Quantity: Head loss in equivalent meters of fluid.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    return flsu.KtoH(self.calcK(lQ, sense, pin, pout), flsu.Qtov(lQ, self._D)) * self._sign
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    Hdyn = flsu.KtoH(self.calcK(Qabs, sense, pin, pout), flsu.Qtov(Qabs, self._D))
+    return Hdyn * self._sign
 
   def toString(self, detail: int=0) -> str:
     txt = super().toString(detail).rstrip('\n')
@@ -350,18 +351,18 @@ class Comp_Tube(Comp_Appendage):  # pylint: disable=invalid-name
 
   # --------------------------------------------------------------------------
   # PHYSICS
-  def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:
+  def calcK(self, Q: Quantity, sense: int, pin: int=1, pout:int=2) -> float:  # pylint: disable=unused-argument
     ''' Calculate head loss coefficient K.
 
     Returns:
       int | float: Head loss coefficient K.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    mag = lQ.magnitude
-    if not hasattr(mag, '__len__') and abs(mag) < 1e-15:
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    Qmag = Qabs.magnitude
+    if np.all(np.abs(Qmag) < 1e-15):
       self._K = 0.0
       return self._K
-    Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
+    Re = fu.Reynolds(V=flsu.Qtov(Qabs, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
     fd = fu.friction_factor(Re, eD=self._e/self._D)
     self._K = (fd * self._L / self._D).to_base_units()
     return self._K
@@ -372,11 +373,11 @@ class Comp_Tube(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Quantity: Head loss in equivalent meters of fluid.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    self.calcK(lQ, 1)
-    Hdyn = (8.0 * self._K * lQ*lQ / (self._D**4 * np.pi**2 * flsme.CTE_G)).to(u.m)
-    psense = 1 if pin < pout else -1
-    return (Hdyn - self._Hs * sense * psense) * self._sign
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    lsense = sense if pin < pout else -sense
+    self.calcK(Qabs, 1)
+    Hdyn = (8.0 * self._K * Qabs * Qabs / (self._D**4 * np.pi**2 * flsme.CTE_G)).to(u.m)
+    return (Hdyn - self._Hs * lsense) * self._sign
 
 # =============================================================================
 # BEND
@@ -462,7 +463,7 @@ class Comp_Bend(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       int: Diameter (default in mm).
     '''
-    return self._D.to(u.mm)
+    return self._D
 
   @D.setter
   def D(self, value: int | float | Quantity) -> Any:
@@ -480,7 +481,7 @@ class Comp_Bend(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       int: Angle of the bend (default in degrees).
     '''
-    return self._A.to(u.degrees)
+    return self._A
 
   @A.setter
   def A(self, value: int | float | Quantity) -> Any:
@@ -520,8 +521,10 @@ class Comp_Bend(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       int | float: Head loss coefficient K.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    if np.all(np.abs(Qabs.magnitude) < 1e-15):
+      return 0.0
+    Re = fu.Reynolds(V=flsu.Qtov(Qabs, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
     fd = fu.friction_factor(Re, eD=self._e/self._D)
     return float(self._n) * fu.bend_rounded(Di=self._D, angle=self._A, fd=fd, bend_diameters=self._R)
 
@@ -536,7 +539,7 @@ class Comp_BendLong(Comp_Appendage):  # pylint: disable=invalid-name
       Defaults to 100.0*u.mm.
     n (int, optional): Number of bends with these properties.
     A (int | float | Quantity, optional): Bend angle (degrees).
-    Lu (int | float, optional): Unimpeded length (m).
+    Lu (int | float, optional): Unimpeded length (mm).
     e (float | Quantity, optional): Absolute wall roughness.
   '''
   # --------------------------------------------------------------------------
@@ -577,11 +580,85 @@ class Comp_BendLong(Comp_Appendage):  # pylint: disable=invalid-name
       [
           flsa.vFun.default(0),
           flsa.vFun.istype(int, float, Quantity),
-          flsa.vFun.tounits(u.m),
+          flsa.vFun.tounits(u.mm),
       ]
     )
     # base class init
     super().__init__(**args_in.restArgs())
+
+  # --------------------------------------------------------------------------
+  # PROPERTIES
+  @property
+  def n(self) -> int:
+    ''' Fixed number of bends property.
+
+    Returns:
+      int: Number of bends.
+    '''
+    return self._n
+
+  @n.setter
+  def n(self, value: int | float) -> Any:
+    ''' Set number of bends property.
+
+    Args:
+      value (int): Number of bends.
+    '''
+    self._n = int(value)
+
+  @property
+  def D(self) -> Quantity:
+    ''' Diameter property.
+
+    Returns:
+      int: Diameter (default in mm).
+    '''
+    return self._D
+
+  @D.setter
+  def D(self, value: int | float | Quantity) -> Any:
+    ''' Set diameter property.
+
+    Args:
+      value (int): Diameter.
+    '''
+    self._D = flsa.toUnits(value, u.mm)
+
+  @property
+  def A(self) -> Quantity:
+    ''' Angle of the bend property.
+
+    Returns:
+      int: Angle of the bend (default in degrees).
+    '''
+    return self._A
+
+  @A.setter
+  def A(self, value: int | float | Quantity) -> Any:
+    ''' Set bend angle property.
+
+    Args:
+      value (int): Angle of the bend.
+    '''
+    self._A = flsa.toUnits(value, u.degrees)
+
+  @property
+  def Lu(self) -> Quantity:
+    ''' Unimpeded length property.
+
+    Returns:
+      float: Unimpeded length (default in mm).
+    '''
+    return self._Lu
+
+  @Lu.setter
+  def Lu(self, value: int | float | Quantity) -> Any:
+    ''' Set Unimpeded length property.
+
+    Args:
+      value (int): Unimpeded length.
+    '''
+    self._Lu = flsa.toUnits(value, u.mm)
 
   # --------------------------------------------------------------------------
   # PHYSICS
@@ -594,8 +671,10 @@ class Comp_BendLong(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       int | float: Head loss coefficient K.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    if np.all(np.abs(Qabs.magnitude) < 1e-15):
+      return 0.0
+    Re = fu.Reynolds(V=flsu.Qtov(Qabs, self._D), D=self._D, rho=self._medium.rho, mu=self._medium.mu)
     if self._Lu == 0:
       return float(self._n) * fu.bend_miter(self._A, Re=Re)
     else:
@@ -628,6 +707,26 @@ class Comp_Entrance(Comp_Appendage):  # pylint: disable=invalid-name
     )
     # base class init
     super().__init__(**args_in.restArgs())
+
+  # --------------------------------------------------------------------------
+  # PROPERTIES
+  @property
+  def D(self) -> Quantity:
+    ''' Diameter property.
+
+    Returns:
+      int: Diameter (default in mm).
+    '''
+    return self._D
+
+  @D.setter
+  def D(self, value: int | float | Quantity) -> Any:
+    ''' Set diameter property.
+
+    Args:
+      value (int): Diameter.
+    '''
+    self._D = flsa.toUnits(value, u.mm)
 
   # --------------------------------------------------------------------------
   # PHYSICS
@@ -766,18 +865,15 @@ class Comp_SharpReduction(Comp_Appendage):  # pylint: disable=invalid-name
     else:
       return float(self._n) * fu.diffuser_sharp(Di1=self._D2, Di2=self._D1)
 
-  def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
-    ''' Calculate head loss in equivalent meters of fluid.
+  def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+    '''Calculate head loss. K is referenced to the smaller pipe (D2) velocity.
 
     Returns:
       Quantity: Head loss in equivalent meters of fluid.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    #if sense > 0:
-    #  D = self._D1
-    #else:
-    #  D = self._D2
-    return flsu.KtoH(self.calcK(lQ, sense, pin, pout), flsu.Qtov(lQ, self._D1)) * self._sign
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    Hdyn = flsu.KtoH(self.calcK(Qabs, sense, pin, pout), flsu.Qtov(Qabs, self._D2))
+    return Hdyn * self._sign
 
 # =============================================================================
 # PIPE CONICAL REDUCTION - DIFFUSOR
@@ -863,7 +959,7 @@ class Comp_ConicalReduction(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Quantity: Starting diameter property.
     '''
-    return self._D1.to(u.mm)
+    return self._D1
 
   @D1.setter
   def D1(self, value: int | float) -> Any:
@@ -881,7 +977,7 @@ class Comp_ConicalReduction(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Quantity: Ending diameter property.
     '''
-    return self._D2.to(u.mm)
+    return self._D2
 
   @D2.setter
   def D2(self, value: int | float) -> Any:
@@ -890,7 +986,7 @@ class Comp_ConicalReduction(Comp_Appendage):  # pylint: disable=invalid-name
     Args:
       value (int | float | Quantity): Diameter (default in mm).
     '''
-    self._D2 = value
+    self._D2 = flsa.toUnits(value, u.mm)
 
   # --------------------------------------------------------------------------
   # PHYSICS
@@ -900,15 +996,27 @@ class Comp_ConicalReduction(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       float: Head loss coefficient K.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    if np.all(np.abs(Qabs.magnitude) < 1e-15):
+      return 0.0
     if (sense > 0 and pin < pout) or (sense < 0 and pin > pout):
-      Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D1), D=self._D1, rho=self._medium.rho, mu=self._medium.mu)
+      Re = fu.Reynolds(V=flsu.Qtov(Qabs, self._D1), D=self._D1, rho=self._medium.rho, mu=self._medium.mu)
       fd = fu.friction_factor(Re, eD=self._e/self._D1)
       return float(self._n) * fu.fittings.contraction_conical(Di1=self._D1, Di2=self._D2, fd=fd, l=self._L)
     else:
-      Re = fu.Reynolds(V=flsu.Qtov(lQ, self._D2), D=self._D2, rho=self._medium.rho, mu=self._medium.mu)
+      Re = fu.Reynolds(V=flsu.Qtov(Qabs, self._D2), D=self._D2, rho=self._medium.rho, mu=self._medium.mu)
       fd = fu.friction_factor(Re, eD=self._e/self._D2)
       return float(self._n) * fu.fittings.diffuser_conical(Di1=self._D2, Di2=self._D1, l=self._L, fd=fd)
+
+  def calcH(self, Q: Quantity, sense: int=1, pin: int=1, pout:int=2) -> Quantity:
+    '''Calculate head loss. K is referenced to the smaller pipe (D2) velocity.
+
+    Returns:
+      Quantity: Head loss in equivalent meters of fluid.
+    '''
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    Hdyn = flsu.KtoH(self.calcK(Qabs, sense, pin, pout), flsu.Qtov(Qabs, self._D2))
+    return Hdyn * self._sign
 
 # =============================================================================
 # PIPE BEVELED ENTRANCE - EXIT
@@ -1071,9 +1179,11 @@ class Comp_PHE(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       int | float: Head loss coefficient K.
     '''
-    lQ = Q.to(u.m**3/u.h) if isinstance(Q, Quantity) else Q * u.m**3/u.h
-    v = lQ / (self._Dpoort**2*np.pi/4)
-    return (self.calcH(lQ, sense, pin, pout) * 2 * flsme.CTE_G / (v**2)).to_base_units().magnitude
+    Qabs = abs(Q.to(u.m**3/u.h)) if isinstance(Q, Quantity) else abs(Q) * u.m**3/u.h
+    if np.all(np.abs(Qabs.magnitude) < 1e-15):
+      return 0.0
+    v = Qabs / (self._Dpoort**2*np.pi/4)
+    return (self.calcH(Qabs, sense, pin, pout) * 2 * flsme.CTE_G / (v**2)).to_base_units().magnitude
 
   def calcH(self, Q: int | float | Quantity, sense: int=1, pin: int=1, pout:int=2) -> float:
     ''' Calculate head loss in equivalent meters of fluid.
@@ -1084,13 +1194,15 @@ class Comp_PHE(Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Quantity: Head loss in equivalent meters of fluid.
     '''
-    lQ = Q.to(u.m**3/u.h) if isinstance(Q, Quantity) else Q * u.m**3/u.h
+    Qabs = abs(Q.to(u.m**3/u.h)) if isinstance(Q, Quantity) else abs(Q) * u.m**3/u.h
+    if np.all(np.abs(Qabs.magnitude) < 1e-15):
+      return 0.0 * u.m
     # drukval in de kanalen
     Dh = 2*self._Dkanaal/self._Phi
     #print(f'Dh= {Dh:.2f~P}')
     Ncp = (self._Nplaten-1)/(2*self._Npasses)
     #print(f'Ncp= {Ncp:.1f}')
-    Gc = (lQ*self._medium.rho / (Ncp*self._Dkanaal*self._Bplaat)).to_base_units()
+    Gc = (Qabs*self._medium.rho / (Ncp*self._Dkanaal*self._Bplaat)).to_base_units()
     #print(f'Gc= {Gc:.3f~P}')
     Re = (Gc*Dh/self._medium.mu).to_base_units()
     Re_m = Re.magnitude
@@ -1100,7 +1212,7 @@ class Comp_PHE(Comp_Appendage):  # pylint: disable=invalid-name
     P_kanalen = (4*f*self._Lplaat*self._Npasses/Dh*Gc**2/2/self._medium.rho*(1)**(-0.17)).to('Pa')
     #print(f'kanalen= {P_kanalen}')
     # drukval in de poorten
-    P_poorten = (11.2 * 2 * self._medium.rho * lQ**2 / np.pi**2 / self._Dpoort**4).to('Pa')
+    P_poorten = (11.2 * 2 * self._medium.rho * Qabs**2 / np.pi**2 / self._Dpoort**4).to('Pa')
     #print(f'P poorten= {P_poorten}')
     return fu.head_from_P(P=P_kanalen + P_poorten, rho=self._medium.rho).to(u.m) * self._sign
 
@@ -1186,8 +1298,8 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Any: Summed head change across all components.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
-    return sum(item.calcH(lQ, sense, pin, pout) for item in self._items)
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
+    return sum(item.calcH(Qabs, sense, pin, pout) for item in self._items)
 
   def calcHprofile(self, Q: int | float | Quantity, sense: int, pin: int=1, pout:int=2, incr: bool=False) -> Any:
     '''Calculate per-component head profile for a given flow.
@@ -1202,17 +1314,17 @@ class Comp_Serial (Comp_Appendage):  # pylint: disable=invalid-name
     Returns:
       Any: List of working-point entries for each component and total.
     '''
-    lQ = flsa.toUnits(Q, u.m**3/u.h)
+    Qabs = abs(flsa.toUnits(Q, u.m**3/u.h))
     pts = []
     H = 0 *u.m
     for i, item in enumerate(self._items):
       if incr:
-        H = H + item.calcH(lQ, sense, pin, pout)
+        H = H + item.calcH(Qabs, sense, pin, pout)
       else:
-        H = item.calcH(lQ, sense, pin, pout)
-      pts.append(flswp.Wpoint(name=f'{i}:{item.name}', Q=lQ, H=H))
-    H = self.calcH(lQ, sense, pin, pout)
-    pts.append(flswp.Wpoint(name='Tot', Q=lQ, H=H))
+        H = item.calcH(Qabs, sense, pin, pout)
+      pts.append(flswp.Wpoint(name=f'{i}:{item.name}', Q=Qabs, H=H))
+    H = self.calcH(Qabs, sense, pin, pout)
+    pts.append(flswp.Wpoint(name='Tot', Q=Qabs, H=H))
     return pts
 
   # --------------------------------------------------------------------------
@@ -1369,7 +1481,7 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
       res.append(sum(Q) - Qtot)
       return res
 
-    lQ_mag = flsa.toUnits(Q, u.m**3/u.h).magnitude
+    Qmag = abs(flsa.toUnits(Q, u.m**3/u.h).magnitude)
     # number of equations
     n_items = len(self._items)
     top = n_items - 1
@@ -1380,7 +1492,7 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     for x0 in x0_list:
       solved = False
       for method in methods:
-        root_res = root(F, x0=x0, args=(lQ_mag,), method=method)
+        root_res = root(F, x0=x0, args=(Qmag,), method=method)
         self._infodict = {'solver': f'root:{method}', 'result': root_res}
         if not root_res.success:
           msg = str(root_res.message)
@@ -1398,7 +1510,7 @@ class Comp_Parallel (Comp_Appendage):  # pylint: disable=invalid-name
     else:
       self._Q = [0.0 *u.m**3/u.h] * n_items
       if n_items > 0:
-        self._Q[0] = lQ_mag * u.m**3/u.h
+        self._Q[0] = Qmag * u.m**3/u.h
       self._H = [0.0 *u.m] * n_items
       warnings.warn(last_msg, RuntimeWarning, stacklevel=2)
       return self._H[0]
@@ -1563,7 +1675,7 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
       H1 = self._items[1].calcH(Qtot-Q1, sense, pin, pout)
       return (H0-H1).magnitude
 
-    lQ_mag = flsa.toUnits(Q, u.m**3/u.h).magnitude
+    Qmag = abs(flsa.toUnits(Q, u.m**3/u.h).magnitude)
     # Initial guesses for retry strategy
     x0_list = self._guess
     last_msg = f'Comp_Parallel2 "{self._name}".calcH: no convergence.'
@@ -1572,7 +1684,7 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
     for x0 in x0_list:
       solved = False
       for method in methods:
-        root_res = root(F, x0=x0, args=(lQ_mag,), method=method)
+        root_res = root(F, x0=x0, args=(Qmag,), method=method)
         self._infodict = {'solver': f'root:{method}', 'result': root_res}
         if not root_res.success:
           msg = str(root_res.message)
@@ -1587,12 +1699,12 @@ class Comp_Parallel2 (Comp_Appendage):  # pylint: disable=invalid-name
       if solved:
         break
     else:
-      self._Q = [lQ_mag *u.m**3/u.h, 0.0 *u.m**3/u.h]
+      self._Q = [Qmag *u.m**3/u.h, 0.0 *u.m**3/u.h]
       self._H = [0.0 *u.m] * 2
       warnings.warn(last_msg, RuntimeWarning, stacklevel=2)
       return self._H[0]
     # process result
-    self._Q = [q_mag *u.m**3/u.h, (lQ_mag - q_mag) *u.m**3/u.h]
+    self._Q = [q_mag *u.m**3/u.h, (Qmag - q_mag) *u.m**3/u.h]
     self._H = [self._items[0].calcH(self._Q[0], sense, pin, pout), self._items[1].calcH(self._Q[1], sense, pin, pout)]
     return self._H[0]
 

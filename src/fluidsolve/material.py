@@ -271,16 +271,11 @@ class Material ():
     Returns:
         str: String representation
     '''
+    name = self._name if self._name else '-'
     if detail == 0:
-      if self._name=='':
-        return f'Material - : rho:{self._rho:.2f~P}, e:{self._e:.2e~P}'
-      else:
-        return f'Material {self._name}: rho:{self._rho:.2f~P}, e:{self._e:.2e~P}'
+      return f'Material {name}: rho:{self._rho:.2f~P}, e:{self._e:.2e~P}'
     else:
-      if self._name=='':
-        return f'Material - : T:{self._T:.2f~P}, rho:{self._rho:.2f~P}, e:{self._e:.2e~P}, k:{self._k:.2e~P}'
-      else:
-        return f'Material {self._name} : T:{self._T:.2f~P}, rho:{self._rho:.2f~P}, e:{self._e:.2e~P}, k:{self._k:.2e~P}'
+      return f'Material {name} : T:{self._T:.2f~P}, rho:{self._rho:.2f~P}, e:{self._e:.2e~P}, k:{self._k:.2e~P}'
 
   def __repr__(self) -> str:
     ''' Representation of the material object

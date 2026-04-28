@@ -1,7 +1,9 @@
 The ``network`` submodule
 =========================
 
-This module is based on the math graph theory.
+This module models a hydraulic network as a graph and solves the resulting
+nonlinear flow problem from topology plus component head laws.
+It is based on the math graph theory.
 For a more elaborate explanation we refer to the theory.
 Some of the terms used here are:
 
@@ -16,7 +18,8 @@ Graph theory is the study of mathematical objects known as graphs, which consist
 
 We always presume that the input network forms a connected graph.
 
-Following methods are used. We presume following network:
+The properties below are useful when inspecting the internal graph build.
+Assume the following network:
 
 ::
 
@@ -25,27 +28,30 @@ Following methods are used. We presume following network:
     |        |        |
     A ────── F ────── E
 
-* **Nodes**: returns all node names (sorted).
-  ``net.Nodes = ('A', 'B', 'C', 'D', 'E', 'F')``
-* **Edges**: returns segment keys (one key per component port-to-port segment).
-  ``net.Edges = ['Comp_1:A->B', 'Comp_2:B->C', ...]``
-* **Adjacency**: returns adjacency entries as ``(segment_key, next_node, sense)``.
-  ``net.Adjacency['A'] = [('Comp_1:A->B', 'B', 1), ('Comp_6:F->A', 'F', -1)]``
-* **SpanningTree**: returns tree entries as ``(segment_key, node_from, node_to, sense)``.
-  ``net.SpanningTree = [('Comp_1:A->B', 'A', 'B', 1), ...]``
-* **FundamentalCycles**: returns cycle entries as ``(segment_key, node_from, node_to, sense)``.
-  ``net.FundamentalCycles = [[('Comp_1:A->B', 'A', 'B', 1), ...], ...]``
+* **nodes**: returns all node names (sorted).
+  ``net.nodes = ('A', 'B', 'C', 'D', 'E', 'F')``
+* **edges**: returns segment keys, one key per component port-to-port segment.
+  ``net.edges = ['Comp_A:A-B', 'Comp_B:B-C', ...]``
+* **adjacency**: returns adjacency entries as ``(segment_key, next_node, sense)``.
+  ``net.adjacency['A'] = [('Comp_A:A-B', 'B', 1), ('Comp_F:F-A', 'F', -1)]``
+* **spanningTree**: returns tree entries as ``(segment_key, node_from, node_to, sense)``.
+  ``net.spanningTree = [('Comp_A:A-B', 'A', 'B', 1), ...]``
+* **cycleBase**: returns ordered loop entries as
+  ``(segment_key, node_from, node_to, sense)``. The stored cycle keeps the full
+  tree path plus the closing chord instead of collapsing the loop to a smaller
+  representation.
+  ``net.cycleBase = [[('Comp_A:A-B', 'A', 'B', 1), ...], ...]``
 
 
-The calculation of the network is done by solving a system of equations.
-This system consists of:
+The network calculation solves a system of nonlinear equations made up of:
 
 * In every node the sum of flowrates has to be zero.
   For ``n`` nodes this contributes ``n-1`` independent equations.
-  The data for the equations in the example looks like below.
-  The order of the rows is the order of the internal nodes storage ['A', 'B', 'C', 'D', 'E', 'F'].
-  Every row has a position for every segment key in the internal segment storage.
-  E.g. for the first line (node A):
+  The corresponding incidence matrix is stored in ``net.funcs['B']``.
+  The order of the rows follows the internal node storage
+  ``['A', 'B', 'C', 'D', 'E', 'F']`` and every row has one position per active
+  segment key.
+  For the first line (node A):
   * The segment connected to A and leaving A contributes ``-1``.
   * Segments not connected to A contribute ``0``.
   * ...
@@ -62,19 +68,29 @@ This system consists of:
 
 
 * In every fundamental cycle the sum of heads has to be zero.
-  If there are ``m`` fundamental cycles, this contributes ``m`` additional equations.
-  Every cycle equation has one entry per segment key:
-  ``+1`` if the segment is traversed in the cycle direction,
-  ``-1`` if traversed opposite,
-  and ``0`` if the segment is not part of that cycle.
+  If there are ``m`` fundamental cycles, this contributes ``m`` additional
+  equations. The corresponding loop matrix is stored in ``net.funcs['C']``.
+  Every cycle equation has one entry per segment key: ``+1`` if the segment is
+  traversed in the cycle direction, ``-1`` if traversed opposite, and ``0`` if
+  the segment is not part of that cycle.
 
 ::
 
   C row i: [0, -1, +1, 0, 0, ...]
 
-The solver builds matrix ``B`` (node continuity) and matrix ``C`` (loop energy),
-evaluates component heads through ``calcH(Q, sense)``, and solves the resulting
-nonlinear system with Newton-Raphson.
+During ``calcNetwork()`` the solver rebuilds the topology, assembles matrices
+``B`` and ``C``, evaluates segment heads through ``calcH(Q, sense, pin, pout)``,
+and solves the resulting nonlinear system with ``scipy.optimize.root``.
+
+Some implementation details that matter when reading results:
+
+* Two-port source components are canonicalized so ``sense=-1`` is treated as the
+  equivalent reversed node order with ``sense=+1``.
+* Initial guesses are retried with both positive and negative seeds so the solve
+  is less sensitive to segment orientation.
+* Most resistance components compute head from ``|Q|``. The network solver
+  reapplies the solved flow sign when forming loop equations so solutions remain
+  invariant to how a segment's node order was entered.
 
 
 

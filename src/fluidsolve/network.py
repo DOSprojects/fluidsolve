@@ -5,7 +5,7 @@ This module represents a hydraulic system as a graph:
 
 * nodes are connection points,
 * segments (edges) are component port-to-port links,
-* a spanning tree and chord set define fundamental cycles.
+* a spanning tree and chord set define a cycle basis.
 
 The solver assembles a nonlinear system from two equation groups:
 
@@ -23,7 +23,7 @@ Internal data artifacts exposed by the class include:
 * ``Nodes`` / ``Edges``: graph-level views used by solvers and diagnostics,
 * ``Adjacency`` and ``SpanningTree``: traversal structures used for cycle
   basis generation,
-* ``FundamentalCycles``: loop basis used for energy equations,
+* ``CycleBase``: loop basis used for energy equations,
 * ``Funcs``: assembled ``B`` and ``C`` matrices,
 * ``Result``: solved per-segment flow/head values.
 
@@ -37,7 +37,7 @@ Assumptions and conventions:
 Solve pipeline summary:
 
 1. Register components and expand them into graph segments.
-2. Build adjacency, spanning tree, and fundamental cycle basis.
+2. Build adjacency, spanning tree, and cycle basis.
 3. Assemble incidence matrices ``B`` and ``C``.
 4. Solve flow unknowns with Newton-Raphson.
 5. Back-calculate and store per-segment ``Q`` and ``H`` results.
@@ -109,7 +109,7 @@ class Network:
     self._nodes             : list = []
     self._adjacency         : dict = {}
     self._spanningtree      : list = []
-    self._fundamentalcycles : list = []
+    self._cyclebase         : list = []
     self._allcycles         : list = []
     self._funcs             : dict = {'B': np.empty((0, 0)), 'C': np.empty((0, 0))}
     self._result            : list = []
@@ -170,13 +170,13 @@ class Network:
     return self._spanningtree
 
   @property
-  def fundamentalCycles(self) -> list[list[str]]:
-    ''' Return fundamental cycles in the graph.
+  def cycleBase(self) -> list[list[str]]:
+    ''' Return the cycle base of the graph.
 
     Returns:
-      list[list[str]]: Fundamental cycles.
+      list[list[str]]: Cycle base.
     '''
-    return self._fundamentalcycles
+    return self._cyclebase
 
   @property
   def funcs(self) -> dict[str, list]:
@@ -220,6 +220,11 @@ class Network:
         raise ValueError(f'Unknown component: {comp}')
       if not isinstance(nodes, (list, tuple)):
         raise ValueError(f'Invalid nodes: {nodes}')
+      # Canonicalize two-port sources: reversing nodes with sense=-1 is
+      # physically equivalent to the opposite node order with sense=+1.
+      if comp.isSource and comp.nports == 2 and sense == -1:
+        nodes = [nodes[1], nodes[0]]
+        sense = +1
       self._components.append({'nodes': list(nodes), 'sense': sense, 'comp': comp,  })
     self._recalc()
 
@@ -233,44 +238,73 @@ class Network:
       list[dict]: Per segment: name, Q, and H.
     '''
 
-    # Rebuild topology and equation matrices to reflect runtime state changes
-    # of components like multi-way valves.
-    self._recalc()
+    def segmentHead(seg: dict, Qmag: float) -> Quantity:
+      '''Return head contribution oriented with the segment reference direction.'''
+      Q = Qmag * u.m**3 / u.h
+      H = seg['comp'].calcH(Q, seg['sense'], seg['pB'], seg['pE'])
+      # Most resistance models are built from |Q|.
+      # Reapply flow sign here so loop equations remain invariant to segment node ordering.
+      if seg['comp'].sign < 0:
+        if abs(Qmag) < 1e-15:
+          return 0.0 * u.m
+        H = H * np.sign(Qmag)
+      return H
 
     def F(x: Any) -> Any:
-      Q = np.asarray(x)
-      res = []
+      ''' solver function '''
+      Q = np.asarray(x, dtype=float)
+      res = np.empty(neq, dtype=float)
+      idx = 0
       # Node continuity equations: B @ Q = 0
-      if B.shape[0] > 1:
-        res.extend((B @ Q)[:-1])
+      if n_node_eq > 0:
+        bq = B @ Q
+        res[:n_node_eq] = bq[:-1]
+        idx = n_node_eq
       # Loop energy equations: C @ H(Q) = 0
-      if C.shape[0] > 0:
-        H = np.zeros(nseg)
-        for i, key in enumerate(seg_keys):
-          seg = self._segments[key]
-          comp = seg['comp']
-          H[i] = comp.calcH(Q[i] * u.m**3 / u.h, seg['sense'], seg['pB'], seg['pE']).magnitude
-        res.extend(C @ H)
+      if n_loop_eq > 0:
+        H = np.empty(nseg, dtype=float)
+        for i, seg in enumerate(segs):
+          H[i] = segmentHead(seg, float(Q[i])).magnitude
+        res[idx:] = C @ H
       return res
 
+    # Rebuild topology and equation matrices to reflect runtime state changes of components like multi-way valves.
+    self._recalc()
+    seg_keys = self._usedSegmentKeys()
+    segs = [self._segments[key] for key in seg_keys]
     B = np.asarray(self._funcs['B'])    # (n_nodes, n_segments)
     C = np.asarray(self._funcs['C'])    # (n_loops, n_segments)
-    seg_keys = self._usedSegmentKeys()
     nseg = len(seg_keys)
-    neq = max(B.shape[0] - 1, 0) + C.shape[0]
+    n_node_eq = max(B.shape[0] - 1, 0)
+    n_loop_eq = C.shape[0]
+    neq = n_node_eq + n_loop_eq
     if nseg != neq:
       raise ValueError(f'Inconsistent equation system: {nseg} unknown flows but {neq} equations')
+    # generate initial guess list
     if guess is None:
       guess_list = [0.5, 2.0, 10.0, 50.0, 200.0]
     elif isinstance(guess, (list, tuple, np.ndarray)):
       guess_list = [float(item) for item in guess]
     else:
       guess_list = [float(guess)]
-    x0_list = [np.full(nseg, g, dtype=float) for g in guess_list]
+    seed_list = []
+    for g in guess_list:
+      for seed in (g, -g):
+        if abs(seed) < 1e-15:
+          seed = 0.0
+        if not any(abs(seed - cur) < 1e-15 for cur in seed_list):
+          seed_list.append(seed)
+    sense_vec = np.asarray([float(self._segments[key]['sense']) for key in seg_keys], dtype=float)
+    x0_list = []
+    for seed in seed_list:
+      candidates = [sense_vec * seed, np.full(nseg, seed, dtype=float)]
+      for cand in candidates:
+        if not any(np.allclose(cand, cur, atol=1e-15, rtol=0.0) for cur in x0_list):
+          x0_list.append(cand)
+    # launch solver with each initial guess until a finite solution is found.
     err_msg = f'Network {self._name} solve did not converge.'
     sol = None
     methods = ('hybr', 'lm', 'df-sane')
-    # Try each method for each initial guess until a finite solution is found.
     for x0 in x0_list:
       for method in methods:
         root_res = root(F, x0=x0, method=method)
@@ -289,6 +323,7 @@ class Network:
           err_msg = f'Network {self._name} solve [{method}] failed with status={root_res.status}'
       if sol is not None:
         break
+    # Process solution into result dict. If no valid solution was found, return zero flows and warning.
     if sol is None:
       self._result = [{'segment': key, 'Q': 0.0 * u.m**3 / u.h, 'H': 0.0 * u.m} for key in seg_keys]
       warnings.warn(err_msg, RuntimeWarning, stacklevel=1)
@@ -297,7 +332,7 @@ class Network:
     for i, key in enumerate(seg_keys):
       Q = sol[i] * u.m**3 / u.h
       seg = self._segments[key]
-      H = seg['comp'].calcH(Q, seg['sense'], seg['pB'], seg['pE'])
+      H = segmentHead(seg, float(sol[i]))
       self._result.append({'segment': key, 'Q': Q, 'H': H})
     return self._result
 
@@ -308,7 +343,7 @@ class Network:
     self._calcSegments()
     self._calcAdjacency()
     self._calcSpanningTree()
-    self._calcSmallestCycleBase()
+    self._calcCycleBase()
     self._calcValidation()
     self._calcFuncs()
 
@@ -364,8 +399,8 @@ class Network:
       dfs(self._nodes[0])
 
 
-  def _calcSmallestCycleBase(self) -> Any:
-    ''' Build a fundamental cycle basis from spanning-tree chords.
+  def _calcCycleBase(self) -> Any:
+    ''' Build a cycle base from spanning-tree chords.
 
     Returns:
       None
@@ -383,15 +418,18 @@ class Network:
         result = dfs(node_next, node_target, visited)
         if result is not None:
           seg = self._segments[seg_key]
-          if seg['sense'] > 0:
-            return [(seg_key, seg['B'], seg['E'], 1)] + result
+          if node_current == seg['B'] and node_next == seg['E']:
+            sense = +1
+          elif node_current == seg['E'] and node_next == seg['B']:
+            sense = -1
           else:
-            return [(seg_key, seg['E'], seg['B'], 1)] + result
+            raise ValueError(f'Segment {seg_key} does not connect {node_current} and {node_next}')
+          return result + [(seg_key, node_current, node_next, sense)]
       return None
 
     # Set of tree segment keys for fast lookup
     tree_keys = {k for k, _, _, _ in self._spanningtree}
-    self._fundamentalcycles = []
+    self._cyclebase = []
     # Each chord (non-tree edge) defines one fundamental cycle.
     for seg_key in self._usedSegmentKeys():
       seg = self._segments[seg_key]
@@ -399,16 +437,12 @@ class Network:
         continue  # Skip tree edges; process chords only.
       node_start = seg['B']
       node_end = seg['E']
-      sense = seg['sense']
-      path = dfs(node_start, node_end, set())
+      path = dfs(node_end, node_start, set())
       if not path:
         continue
-      # Closing chord (always added explicitly)
-      if sense > 0:
-        cycle = path + [(seg_key, node_start, node_end, 1)]
-      else:
-        cycle = path + [(seg_key, node_end, node_start, 1)]
-      self._fundamentalcycles.append(self._sortCycle(cycle))
+      # Chord closes the loop in canonical segment direction B -> E.
+      cycle = path + [(seg_key, node_start, node_end, +1)]
+      self._cyclebase.append(cycle)
 
   def _calcValidation(self) -> None:
     ''' Validate fundamental loop equations.
@@ -416,12 +450,12 @@ class Network:
     Raises ValueError when a loop is physically invalid.
     '''
     txt = ''
-    if not self._fundamentalcycles:
+    if not self._cyclebase:
       return 'Empty'
     has_source = any(seg['comp'].isSource for seg in self._segments.values() if seg.get('use', True))
     if not has_source:
       raise ValueError('Network has no energy source (no pump / pressure source present)')
-    for li, loop in enumerate(self._fundamentalcycles):
+    for li, loop in enumerate(self._cyclebase):
       seen = set()
       has_resistance = False
       txt += f'Loop {li + 1}:\n'
@@ -454,8 +488,8 @@ class Network:
       B[nodes.index(seg['E']), j] = +1
     self._funcs['B'] = B
     # C matrix
-    C = np.zeros((len(self._fundamentalcycles), len(seg_keys)))
-    for i, loop in enumerate(self._fundamentalcycles):
+    C = np.zeros((len(self._cyclebase), len(seg_keys)))
+    for i, loop in enumerate(self._cyclebase):
       for seg_key, _, _, sense in loop:
         C[i, seg_keys.index(seg_key)] = sense
     self._funcs['C'] = C
@@ -525,7 +559,7 @@ class Network:
     if detail:
       txt += self.adjacencyString() + '\n'
       txt += self.spanningTreeString() + '\n'
-      txt += self.fundamentalCyclesString() + '\n'
+      txt += self.cycleBaseString() + '\n'
       txt += self.functionString() + '\n'
     txt += self.resultString() + '\n'
     return txt
@@ -617,32 +651,32 @@ class Network:
     else:
       seg_w = max(7, max(len(key) for key, _, _, _ in self._spanningtree))
       node_w = max(1, max(len(str(node)) for _, node_a, node_b, _ in self._spanningtree for node in (node_a, node_b)))
-      header = f"{'segment':<{seg_w}} | {'path':<{node_w * 2 + 4}} | {'sense':<8}"
+      header = f'{"path":<{node_w * 2 + 4}} | {"segment":<{seg_w}} | {"sense":<8}'  # pylint: disable=inconsistent-quotes
       txt += f'   {header}\n'
       txt += f'   {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
       for seg_key, node_from, node_to, sense in self._spanningtree:
-        txt += f'   {seg_key:<{seg_w}} | {node_from:<{node_w}} -> {node_to:<{node_w}} | {sense:+d}\n'
+        txt += f'   {node_from:<{node_w}} -> {node_to:<{node_w}} | {seg_key:<{seg_w}} |   {sense:+d}\n'
     return txt
 
-  def fundamentalCyclesString(self) -> str:
-    ''' Format the fundamental cycle basis for display.
+  def cycleBaseString(self) -> str:
+    ''' Format the cycle base for display.
 
     Returns:
-      str: Fundamental cycle section text.
+      str: Cycle base section text.
     '''
-    txt = f' FundamentalCycles ({len(self._fundamentalcycles)}):\n'
-    if not self._fundamentalcycles:
+    txt = f' CycleBase ({len(self._cyclebase)}):\n'
+    if not self._cyclebase:
       txt += '  ---\n'
     else:
-      seg_w = max(7, max(len(seg_key) for cycle in self._fundamentalcycles for seg_key, _, _, _ in cycle))
-      node_w = max(1, max(len(str(node)) for cycle in self._fundamentalcycles for _, node_a, node_b, _ in cycle for node in (node_a, node_b)))
-      for idx, cycle in enumerate(self._fundamentalcycles, start=1):
+      seg_w = max(7, max(len(seg_key) for cycle in self._cyclebase for seg_key, _, _, _ in cycle))
+      node_w = max(1, max(len(str(node)) for cycle in self._cyclebase for _, node_a, node_b, _ in cycle for node in (node_a, node_b)))
+      for idx, cycle in enumerate(self._cyclebase, start=1):
         txt += f'   Loop {idx}:\n'
-        header = f"{'segment':<{seg_w}} | {'path':<{node_w * 2 + 4}} | {'sense':<8}"
+        header = f'{"path":<{node_w * 2 + 4}} | {"segment":<{seg_w}} | {"sense":<8}'  # pylint: disable=inconsistent-quotes
         txt += f'      {header}\n'
         txt += f'      {"-" * len(header)}\n'  # pylint: disable=inconsistent-quotes
         for seg_key, node_from, node_to, sense in cycle:
-          txt += f'      {seg_key:<{seg_w}} | {node_from:<{node_w}} -> {node_to:<{node_w}} | {sense:+d}\n'
+          txt += f'      {node_from:<{node_w}} -> {node_to:<{node_w}} | {seg_key:<{seg_w}} |   {sense:+d}\n'
     return txt
 
   def functionString(self) -> str:
@@ -714,11 +748,11 @@ class Network:
             nodes_txt = f"({seg['B']} ← {seg['E']})"
         else:
           nodes_txt = '-'
-        txt += f'   {seg_key:<{seg_w}} | {nodes_txt:<{nodes_w}} | {comp_name:<{comp_w}} | {item["Q"]:>10.2g~P} | {item["H"]:>7.2g~P}\n'  # pylint: disable=inconsistent-quotes
+        txt += f'   {seg_key:<{seg_w}} | {nodes_txt:<{nodes_w}} | {comp_name:<{comp_w}} | {item["Q"]:>10.2f~P} | {item["H"]:>7.2f~P}\n'  # pylint: disable=inconsistent-quotes
     return txt
 
   def networkValidationtoString(self) -> str:
-    ''' Return the validation report for fundamental cycles.
+    ''' Return the validation report for the cycle base.
 
     Returns:
       str: Validation report.

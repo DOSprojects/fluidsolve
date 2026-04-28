@@ -10,7 +10,7 @@ Initial version.
 
 V0.6.0 (16/09/2025)
 ===================
-Rework the basic version to complete module.
+Reworked the basic version into a complete module.
 
 - rework components
 - generator class
@@ -20,25 +20,29 @@ V0.7.0 (30/09/2025)
 ===================
 Minor fixes for first release.
 
-- rework documantation
+- rework documentation
 - fix release issues
 
 V0.8.0 (16/04/2026)
 ===================
-Huge refactor to be able to use valves and other mutliport components.
+Huge refactor to support valves and other multiport components.
 
 - refactoring
-- rework documantation
+- rework documentation
 - fix release issues
 
 V0.9.0 (19/04/2026)
 ===================
-Fix liniting errors.
-
-- ready for a V1.0.0?
+Fixed linting errors.
 
 V0.9.1 (26/04/2026)
 ===================
 Some minor fixes and cosmetic changes.
+
+V0.9.2 (28/04/2026)
+===================
+Fixed errors in the network calculation module.
+Still not sure all issues are solved.
+Main concern is the solver possibly not converging.
 
 - ready for a V1.0.0?

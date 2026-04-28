@@ -201,13 +201,33 @@ Example: `e30_basic`
    :language: python
    :linenos:
 
-Example: `e31_valve`
---------------------
+Example: `e31_basic2`
+---------------------
 
-.. automodule:: x_examples.e31_valve
+.. automodule:: x_examples.e31_basic2
    :exclude-members:
 
-.. literalinclude:: ../../src/x_examples/e31_valve.py
+.. literalinclude:: ../../src/x_examples/e31_basic2.py
+   :language: python
+   :linenos:
+
+Example: `e32_basic3`
+---------------------
+
+.. automodule:: x_examples.e32_basic3
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e32_basic3.py
+   :language: python
+   :linenos:
+
+Example: `e35_valve`
+--------------------
+
+.. automodule:: x_examples.e35_valve
+   :exclude-members:
+
+.. literalinclude:: ../../src/x_examples/e35_valve.py
    :language: python
    :linenos:
 

@@ -235,6 +235,15 @@ class Path(flsb.Comp_Base):
     '''
     return self.toString(detail=0)
 
+  def __format__(self, format_spec: str) -> str:
+    if format_spec == '':
+      return str(self)
+    try:
+      detail = int(format_spec)
+    except ValueError as exc:
+      raise ValueError(f'Invalid format spec for {type(self).__name__}: {format_spec!r}') from exc
+    return self.toString(detail)
+
   def toString(self, detail: int = 0) -> str:
     ''' Return a formatted multi-line path description.
 
@@ -244,9 +253,11 @@ class Path(flsb.Comp_Base):
     Returns:
       str: Formatted path text.
     '''
-    txt = f'Path "{self._name}"\n'
-    if detail>0:
-      txt += f'  Components ({len(self._items)}):\n'
+    txt = f'Path "{self._name}"'
+    if detail == 0:
+      txt = f': {len(self._items)} Components "\n'
+    else:
+      txt += f'\n  Components ({len(self._items)}):\n'
       txt += self.componentsString()
     return txt
 

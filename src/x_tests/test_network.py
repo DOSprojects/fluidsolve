@@ -121,10 +121,70 @@ def test_network_builds_segments_adjacency_tree_and_cycle_matrices() -> None:
   assert network.adjacency['A'][0] == ('P1:A-B', 'B', 1)
   assert ('R2:C-A', 'C', -1) in network.adjacency['A']
   assert len(network.spanningTree) == 2
-  assert len(network.fundamentalCycles) == 1
+  assert len(network.cycleBase) == 1
   assert network.funcs['B'].shape == (3, 3)
   assert network.funcs['C'].shape == (1, 3)
   assert sorted(abs(value) for value in network.funcs['C'][0]) == [1.0, 1.0, 1.0]
+
+def test_network_cycle_basis_keeps_full_chord_path_loops() -> None:
+  network = module_under_test.Network(
+    name='QuadLoop',
+    components=[
+      {'comp': DummyPump('P1', head_factor=5.0), 'nodes': ['A', 'B']},
+      {'comp': DummyResist('R1', head_factor=1.0), 'nodes': ['B', 'C']},
+      {'comp': DummyResist('R2', head_factor=1.0), 'nodes': ['C', 'D']},
+      {'comp': DummyResist('R3', head_factor=1.0), 'nodes': ['D', 'A']},
+      {'comp': DummyResist('R4', head_factor=1.0), 'nodes': ['B', 'D']},
+    ],
+  )
+
+  assert len(network.cycleBase) == 2
+  # No fundamental loop should collapse to a single-segment equation.
+  assert all(len(loop) >= 3 for loop in network.cycleBase)
+  non_zero_counts = [int(np.count_nonzero(row)) for row in network.funcs['C']]
+  assert all(count >= 3 for count in non_zero_counts)
+
+def test_network_solution_invariant_to_segment_node_order() -> None:
+  def build(nodes3: list[str]) -> module_under_test.Network:
+    return module_under_test.Network(
+      name='InvariantOrder',
+      components=[
+        {'comp': DummyPump('P1', head_factor=4.0), 'nodes': ['A', 'B']},
+        {'comp': DummyResist('R1', head_factor=1.0), 'nodes': ['B', 'C']},
+        {'comp': DummyResist('R2', head_factor=1.0), 'nodes': nodes3},
+        {'comp': DummyPump('P2', head_factor=4.0), 'nodes': ['E', 'D']},
+        {'comp': DummyResist('R3', head_factor=1.0), 'nodes': ['E', 'F']},
+        {'comp': DummyResist('R4', head_factor=1.0), 'nodes': ['C', 'F']},
+        {'comp': DummyResist('R5', head_factor=1.0), 'nodes': ['A', 'F']},
+      ],
+    )
+
+  net_dc = build(['D', 'C'])
+  net_cd = build(['C', 'D'])
+
+  res_dc = {item['segment'].split(':', 1)[1]: item for item in net_dc.calcNetwork()}
+  res_cd = {item['segment'].split(':', 1)[1]: item for item in net_cd.calcNetwork()}
+
+  q_ab_dc = res_dc['A-B']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+  q_ab_cd = res_cd['A-B']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+  q_bc_dc = res_dc['B-C']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+  q_bc_cd = res_cd['B-C']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+  q_3_dc = res_dc['D-C']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+  q_3_cd = res_cd['C-D']['Q'].to(module_under_test.u.m**3 / module_under_test.u.h).magnitude
+
+  h_ab_dc = res_dc['A-B']['H'].to(module_under_test.u.m).magnitude
+  h_ab_cd = res_cd['A-B']['H'].to(module_under_test.u.m).magnitude
+  h_bc_dc = res_dc['B-C']['H'].to(module_under_test.u.m).magnitude
+  h_bc_cd = res_cd['B-C']['H'].to(module_under_test.u.m).magnitude
+  h_3_dc = res_dc['D-C']['H'].to(module_under_test.u.m).magnitude
+  h_3_cd = res_cd['C-D']['H'].to(module_under_test.u.m).magnitude
+
+  assert q_ab_dc == pytest.approx(q_ab_cd)
+  assert q_bc_dc == pytest.approx(q_bc_cd)
+  assert abs(q_3_dc) == pytest.approx(abs(q_3_cd))
+  assert h_ab_dc == pytest.approx(h_ab_cd)
+  assert h_bc_dc == pytest.approx(h_bc_cd)
+  assert abs(h_3_dc) == pytest.approx(abs(h_3_cd))
 
 def test_network_validation_requires_source_and_resistance_in_loops() -> None:
   with pytest.raises(ValueError, match='no energy source'):
@@ -255,8 +315,8 @@ def test_network_string_helpers_include_topology_and_results() -> None:
   assert 'segment' in text
   assert 'path' in text
   assert 'sense' in text
-  assert ' | +1' in text
-  assert 'FundamentalCycles' in text
+  assert '+1' in text
+  assert 'CycleBase' in text
   assert 'Loop 1:' in text
   assert 'Functions: Combined incidence matrix (B:3) (C:1):' in text
   assert 'Result:' in text
