@@ -45,4 +45,9 @@ Fixed errors in the network calculation module.
 Still not sure all issues are solved.
 Main concern is the solver possibly not converging.
 
+V0.9.3 (28/04/2026)
+===================
+fixing the release proces.
+
+
 - ready for a V1.0.0?
