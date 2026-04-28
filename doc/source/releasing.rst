@@ -115,6 +115,45 @@ Check Package
 
          python test.py
 
+PyPI setup
+^^^^^^^^^^
+
+* Make sure there is a workflow: ``.github/workflows/publish-pypi.yml``
+* In PyPI:
+
+    * Go to Account settings -> API tokens and create a token.
+    * Configure Trusted Publisher on PyPI (critical step).
+    * Go to PyPI -> your project -> Settings -> Publishing.
+    * Add a new trusted publisher with:
+
+        * Owner: your GitHub username/org
+        * Repository: your repo name
+        * Workflow name: ``publish-pypi.yml``
+        * Environment name: ``pypi`` (matches your YAML)
+
+* In GitHub:
+
+    * Open Actions in your repository:
+        `<https://github.com/DOSprojects/fluidsolve/actions>`_
+    * You should see ``Publish to PyPI`` in the workflow list.
+    * If you do not see it, your workflow file is likely not being detected.
+    * Run it manually (debug):
+        * Click ``Publish to PyPI``.
+        * Click ``Run workflow`` (top right).
+        * Select branch (usually ``main``).
+        * Click ``Run``.
+
+    * If nothing shows in the Actions tab, check:
+
+        * The file exists at ``.github/workflows/publish-pypi.yml``.
+        * The file is pushed to ``main``.
+        * The YAML is valid.
+        * Actions are enabled in repository settings.
+
+    * What success looks like:
+
+        * After triggering, you see a running job.
+        * Open it and confirm logs for ``build`` and ``publish``.
 
 Releasing
 ^^^^^^^^^
